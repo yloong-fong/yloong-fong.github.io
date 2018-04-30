@@ -1,0 +1,809 @@
+---
+title: "Data Viz Project - Terrorism"
+author: "Group 13"
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+## How, When and Where Do Terrorists Attack?
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(readr)
+terror <- read_csv("ussubset.csv")
+
+# Bar graph for types of attacks 
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+
+terror$Ideology <- terror$DOM_I
+terror <- terror %>% 
+  group_by(attacktype1) %>% 
+  mutate(total = n())
+  
+terror1 <- arrange(terror, total)
+terror1$attacktype1 <- factor(terror1$attacktype1, levels = rev(unique(terror1$attacktype1)))
+
+
+gg_type <- ggplot(terror, aes(x = attacktype1_txt, fill = Ideology)) + 
+  geom_bar(width = 0.5) + 
+  geom_text(aes(x = attacktype1_txt, y = total, label = total), 
+            hjust = -0.1, 
+            size = 3.5, 
+            check_overlap = TRUE) + 
+  expand_limits(y = c(0, 120)) +
+  coord_flip() + 
+  scale_fill_manual(values = c("purple", "red", "darkgreen", "blue", "orange", "grey")) +
+  theme_economist_white(base_size = 8) + 
+  xlab("Type of Attack") + 
+  ylab("Number of Attacks") +
+  labs(title = "Attack Count for the Different Types of Attacks")
+
+gg_type
+```
+
+Armed Assualts are the most common form of terrorist attacks, followed by assassination and then bombing. 
+
+For armed assault attacks, a large majority of the terrorism groups adopt the left-wing and right-wing ideologies.
+
+
+```{r, comment = '', echo=FALSE}
+library(plotly)
+terror2 <- terror %>% 
+  group_by(iyear, Ideology) %>% 
+  mutate(total = n(), 
+         nkills = sum(nkill))
+
+terror_left <- filter(terror2, Ideology == "Left-Wing")
+terror_right <- filter(terror2, Ideology == "Right-Wing")
+g <- terror2 %>% group_by(Ideology) %>% 
+  plot_ly() %>% layout(title = "Line graph for Number of Attacks over time", 
+                       xaxis = list(title = "Year"), 
+                       yaxis = list(title = "Number of Attacks")) %>%
+  add_lines(x = terror2$iyear, y = terror2$total, 
+            alpha = 0.2, name = "Other Ideologies", 
+            hoverinfo = 'text', 
+           text = ~paste('</br> Year: ', iyear, 
+                        '</br> Number of Attacks: ', total, 
+                        '</br> Number of Fatalities: ', nkills, 
+                        '</br> Ideology: ', Ideology),
+            type = "scatter", mode = "lines",
+            line = list(color = 'rgba(192,192,192,0.4)')) 
+
+g %>%  add_lines(x = terror_left$iyear, y = terror_left$total, 
+           name = "Left-Wing", 
+            hoverinfo = 'text', 
+          text = ~paste('</br> Year: ', terror_left$iyear, 
+                        '</br> Number of Attacks: ', terror_left$total, 
+                        '</br> Number of Fatalities: ', terror_left$nkills, 
+                        '</br> Ideology: ', terror_left$Ideology), 
+          type = "scatter", mode = "lines", line = list(color = c('red'))) %>% 
+  add_lines(x = terror_right$iyear, y = terror_right$total, 
+           name = "Right-Wing", 
+           hoverinfo = 'text', 
+          text = ~paste('</br> Year: ', terror_right$iyear, 
+                        '</br> Number of Attacks: ', terror_right$total, 
+                        '</br> Number of Fatalities: ', terror_right$nkills, 
+                        '</br> Ideology: ', terror_right$Ideology), type = "scatter",
+            mode = "lines", line = list(color = c('blue'))) 
+
+```
+
+The number of terror attacks fluctuate erratically across the years, though there seem to be a general decrease in number of attacks.
+
+Terrorist groups adopting the left-wing ideologies were the ones who conducted the most number of terrorist attacks from 1970 to 1973. The worst year would be 1970 where the left-wing terrorist groups were involved in 17 attacks which lead to 19 fatalities. However, the number of attacks decreased subsequently and there has not been any attacks organised by left-wing terrorist groups from 1981 onwards.
+
+On the other hand, the terrorist groups with right-wing ideologies were involved in a moderate number of terror attacks and 7 was the highest number of attacks which they have been involved in the year 1980. But they have still been active in causing terror attacks across the years.
+
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(rgdal)
+library(leaflet)
+library(dplyr)
+library(plyr)
+library(magrittr)
+library(RColorBrewer)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+us_fatal <- read.csv("ussubset.csv")
+usa <- readOGR('cb_2016_us_state_20m.shp', verbose = FALSE)
+
+us_fatal <- us_fatal[us_fatal$latitude >= 24.7433195,]
+us_fatal <- us_fatal[us_fatal$latitude <= 49.3457868,]
+us_fatal <- us_fatal[us_fatal$longitude >= -124.7844079,]
+us_fatal <- us_fatal[us_fatal$longitude <= -66.9513812,]
+
+us_fatal_2010  <- subset(us_fatal, attackdecade==2010)
+us_fatal_2000  <- subset(us_fatal, attackdecade==2000)
+us_fatal_1990  <- subset(us_fatal, attackdecade==1990)
+us_fatal_1980  <- subset(us_fatal, attackdecade==1980)
+us_fatal_1970  <- subset(us_fatal, attackdecade==1970)
+
+
+pal = colorFactor(c("purple","red","green","blue","orange","black"), domain = us_fatal$DOM_I) 
+color_ideology_2010 = pal(us_fatal_2010$DOM_I)
+color_ideology_2000 = pal(us_fatal_2000$DOM_I)
+color_ideology_1990 = pal(us_fatal_1990$DOM_I)
+color_ideology_1980 = pal(us_fatal_1980$DOM_I)
+color_ideology_1970 = pal(us_fatal_1970$DOM_I)
+
+leaflet(usa, width ="100%", height = "400px" ) %>% setView(lat=33, lng=-103 , zoom=3.5) %>% addPolygons(stroke = TRUE, smoothFactor = 0.5, weight=1, color='#333333', opacity=0.5, fillColor = "white", label = usa@data$NAME) %>% 
+  addCircleMarkers(group="2010 attacks", data=us_fatal_2010, lng = ~longitude, lat = ~latitude, color=color_ideology_2010, fillColor=color_ideology_2010, radius=2*sqrt(us_fatal_2010$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_2010$gname,"<br/>", "State:",us_fatal_2010$provstate,"<br/>", "Date of Attack:", us_fatal_2010$date,"<br/>", "Ideology:", us_fatal_2010$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_2010$nkill, "<br/>", "Attack Type:",  us_fatal_2010$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="2000 attacks", data=us_fatal_2000, lng = ~longitude, lat = ~latitude, color=color_ideology_2000, fillColor=color_ideology_2000, radius=2*sqrt(us_fatal_2000$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_2000$gname,"<br/>","State:", us_fatal_2000$provstate,"<br/>","Date of Attack:", us_fatal_2000$date,"<br/>", "Ideology:", us_fatal_2000$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_2000$nkill, "<br/>", "Attack Type:",  us_fatal_2000$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="1990 attacks", data=us_fatal_1990, lng = ~longitude, lat = ~latitude, color=color_ideology_1990, fillColor=color_ideology_1990, radius=2*sqrt(us_fatal_1990$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1990$gname,"<br/>","State:", us_fatal_1990$provstate,"<br/>", "Date of Attack:", us_fatal_1990$date,"<br/>", "Ideology:", us_fatal_1990$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1990$nkill, "<br/>", "Attack Type:",  us_fatal_1990$attacktype1_txt, "<br/>")) %>%
+ 
+   addCircleMarkers(group="1980 attacks", data=us_fatal_1980, lng = ~longitude, lat = ~latitude, color=color_ideology_1980, fillColor=color_ideology_1980, radius=2*sqrt(us_fatal_1980$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1980$gname,"State:", us_fatal_1980$provstate,"<br/>","<br/>","Date of Attack:", us_fatal_1980$date,"<br/>", "Ideology:", us_fatal_1980$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1980$nkill, "<br/>", "Attack Type:",  us_fatal_1980$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="1970 attacks", data=us_fatal_1970, lng = ~longitude, lat = ~latitude, color=color_ideology_1970, fillColor=color_ideology_1970, radius=2*sqrt(us_fatal_1970$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1970$gname,"<br/>","State:", us_fatal_1970$provstate,"<br/>","Date of Attack:", us_fatal_1970$date,"<br/>", "Ideology:", us_fatal_1970$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1970$nkill, "<br/>", "Attack Type:",  us_fatal_1970$attacktype1_txt, "<br/>")) %>%
+  addLegend(pal = pal, values = ~us_fatal$DOM_I, title = "Ideology of Perpetrator", position = "bottomright") %>%
+    addLayersControl(
+overlayGroups = c("2010 attacks","2000 attacks", "1990 attacks", "1980 attacks", "1970 attacks"),
+options = layersControlOptions(collapsed = TRUE))  %>% hideGroup("2000 attacks") %>% hideGroup("1990 attacks") %>% hideGroup("1980 attacks") %>% hideGroup("1970 attacks")
+
+```
+
+To build on the earlier visualizations of summary statistics of the terrorist attacks, the leaflet map above shows the location of the attacks across the years (different layers). The locations are color-coded according to the ideology of the perpetrator as shown in the legend, and sized according to the number of fatilities. Specifics of the attacks including information on the perpetrator, state, date of attack, and type of attack are detailed in pop-ups when the markers are clicked.
+
+The following are some noteworthy trends from this visualization. Firstly, the number of attacks seem to be decreasing over time as later decades have fewer markers on the map. However, the number of fatilites stemming from each attack tend to be larger for the later attacks as indicated by the larger radius of the markers for the layers corresponding to later decades. Secondly, most of the attacks tend to be driven by religious or right-wing ideologies since most of the markers are either blue or green. Thirdly, attacks occur more frequently in the east coast area around New York and the west coast area around California. The notorious 9/11 attack stands out in this visualization with the large green circle marker in the layer corresponding to 2000-2010 attacks.
+
+From the aforementioned takeaways from the visualization, we can infer that security has probably improved in terms of reducing the number of attacks but concurrently, terrorists seem to be going for more major attacks that will result in more fatalities. Moreover, we should be wary of conflicts relating to religious or right-wing ideologies as those seem to be prone to result in a terrorist attack. Finally, the coastal areas should be more wary as they are more likely targets of a terrorist attack.
+
+
+
+
+
+
+## State Level Maps - Are Some States More Vulnerable Than Others
+
+```{r Setup, include=FALSE, results='hide', warning=FALSE, comment = '', echo=FALSE}
+detach("package:rgdal", unload = TRUE)
+detach("package:leaflet", unload = TRUE)
+detach("package:dplyr", unload = TRUE)
+detach("package:plyr", unload = TRUE)
+detach("package:magrittr", unload = TRUE)
+detach("package:RColorBrewer", unload = TRUE)
+detach("package:stringr", unload = TRUE)
+library(knitr)
+opts_chunk$set(fig.path="images/",
+               cache.path="cache/",
+               cache=FALSE,
+               echo=FALSE,
+               message=FALSE,
+               warning=FALSE)
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(readr)
+ussubset <- read_csv("ussubset.csv")
+```
+
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(magrittr)
+library(dplyr)
+# group by decade
+usattacks_decade <- ussubset[c("provstate","attacktype1","attackdecade")]
+# count attacks by state for each decade
+attack_count_decade <- usattacks_decade %>%
+  group_by(provstate, attackdecade) %>%
+  summarise(n = sum(attacktype1)) %>%
+                ungroup() %>%
+                mutate(provstate = reorder(provstate, n))
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(ggplot2)
+attack_decade_heatmap <- ggplot(data = attack_count_decade, aes(x = factor(attackdecade), y = reorder(provstate, n))) +
+  geom_tile(aes(fill = n), colour = "yellow") + theme_grey(base_size = 9) + scale_fill_gradient(low = "light yellow", high = "brown") + labs(x = "Decade", y = "State", fill = "Frequency") + 
+scale_x_discrete(expand = c(0, 0)) +
+scale_y_discrete(expand = c(0, 0)) + theme(axis.text.x = element_text(angle = 90, hjust = 0.5)) + ggtitle("Number of attacks by state over decades") + theme(plot.title = element_text(hjust = 0.5))
+
+attack_decade_heatmap
+```
+
+Investigating potential trends and differences in attacks by state across time, the heatmap above shows the frequency of attacks for each state across the decades. From the heatmap, attacks appear to be most widespread across states in the 1970s and 2010s, with most states having experienced at least one attack in these two decades. On the other hand, a majority of the states did not experience any attack in the 1990s and 2000s, although a higher concentration of attacks in states like New York, District of Columbia and Florida. This may be indicative of a change in trend from having a widespread attack (attacking most states) in earlier years to more focused attacks (on few states), but a reversal to more widespread attacks in the last decade.
+
+Analysing trends in frequency of attacks for each state, certain states like California, New York and Texas have experienced attacks across all decades, with the highest number of attacks for California and New York especially in the 1970s. This may be indicative of more focused plans in targeting particular states such as these, where these states tend to have the largest population sizes and hence more frequently targeted (potentially to aim for a bigger impact).
+
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(readxl)
+library(maps)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+GDPstate <- read_excel("GDPpercap.xls")
+colnames(GDPstate)[3] <- "GDP"
+colnames(GDPstate)[2] <- "state"
+GDPstate <- GDPstate[,c(2,3)]
+us.states <- map_data("state")
+us.states <- as.data.frame(us.states)
+us.states <- dplyr::rename(us.states, state = region)
+us.states$subregion = NULL
+us.states$state <- str_to_title(us.states$state)
+library(tidyverse)
+statenames <- as_data_frame(
+  cbind(state=state.name, state.abb = state.abb, 
+        state.center.x = state.center$x, 
+        state.center.y = state.center$y))
+statenames <- statenames %>% mutate_each_(funs(as.numeric), 
+                 vars=c("state.center.x","state.center.y"))
+us.states <- left_join(us.states, statenames)
+us.states2 <- left_join(us.states, GDPstate)
+ggplot(us.states2, 
+       aes(x = long, y = lat, group=group, label=state)) + 
+  geom_polygon(aes(fill = GDP)) +
+  scale_fill_gradientn(colours=c("pink", "red")) +
+  geom_text(data=statenames, inherit.aes = FALSE, 
+            aes(label=state.abb, x=state.center.x, 
+                y=state.center.y), colour="white") +
+  geom_point(data = us_fatal, aes(x = longitude, y = latitude, size = nkill, group = NULL, label = NULL), colour = "black")  +
+  labs(fill = "GDP per capita (chained 2009 dollars)", size = "Number of Fatalities") +
+  theme_map() + theme(legend.position="right") + coord_map(projection = "mercator")
+```
+
+Moving from the broad picture of the details of the terrorist attacks in US as a whole to the specific picture of the relationship between each state and the attacks, we now find a possible reason as to why California and New York are prone to terrorist attacks. Those are two states with very high GDP per capita as portrayed by the Choropleth shading and terrorist groups may think that attacking those states would result in a greater disruption of (economic) activity. As a corollary, it is also worth noting that states with lower GDP per capita (lighter shades) tend to be less affected by terrorist attacks.
+
+
+## Word Cloud - What Drives Terrorist Organizations
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(readxl)
+terror <- read_excel("PPT-US_0517dist.xlsx")
+#View(terror)
+terror <- terror[c("DOM_I","PHIL")]
+
+attach(terror)
+terror$IDEO[DOM_I == 1] <- "Extreme Right Wing"
+terror$IDEO[DOM_I == 2] <- "Extreme Left Wing"
+terror$IDEO[DOM_I == 3] <- "Religious"
+terror$IDEO[DOM_I == 4] <- "Ethno-nationalist/Separatist"
+terror$IDEO[DOM_I == 5] <- "Single Issue"
+terror$IDEO[DOM_I == -99] <- "Uncertain"
+detach(terror)
+
+terror = terror[!terror$DOM_I == -99,]
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+#subset by ideologies
+right = terror[!terror$DOM_I == 1,]
+left = terror[!terror$DOM_I == 2,]
+relig = terror[!terror$DOM_I == 3,]
+ethno = terror[!terror$DOM_I == 4,]
+single = terror[!terror$DOM_I == 5,]
+```
+
+
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# using text analysis
+library(tm)
+library(stringr)
+right_text <- data.frame(doc_id=right$DOM_I, text=right$PHIL, stringsAsFactors = FALSE)
+df_source_right <- DataframeSource(right_text)
+tm_right <- VCorpus(df_source_right)
+
+# our custom vector of stop words
+
+my_custom_stopwords <- c("group", "philosophical", "movement", "ideological", "philosophically", "philosophy", "philosophies")
+tm2_right <- tm_map(tm_right, content_transformer(tolower))
+tm2_right <- tm_map(tm2_right, removePunctuation)
+tm2_right <- tm_map(tm2_right, removeWords, c(stopwords("en")))
+tm2_right <- tm_map(tm2_right, removeWords, my_custom_stopwords)
+tm2_right <- tm_map(tm2_right, removeNumbers)
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+tm2_right <- tm_map(tm2_right, content_transformer(removeNumPunct))
+tm2_right <- tm_map(tm2_right, stripWhitespace)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# stemming
+library(SnowballC)
+# Stem all words
+tm_stemmed_right <- tm_map(tm2_right, stemDocument)
+
+# Stem completion
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+tm_all_right <- lapply(tm_stemmed_right, stemCompletion2, 
+                     dictionary=tm2_right)
+
+tm_right <- VCorpus(VectorSource(tm_all_right))
+
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tm)
+
+dtm_right<-DocumentTermMatrix(tm_right)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tidytext)
+sotu_td_right <- tidy(dtm_right)
+
+sotu_tf_idf_right <-  sotu_td_right %>%
+                bind_tf_idf(term, document, count) %>%  
+                arrange(desc(tf_idf)) 
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# top 300 words using count
+top_words_right <- sotu_tf_idf_right %>%
+  group_by(term) %>%
+  summarise(n = sum(count)) %>%
+                top_n(n = 300, wt = n)  %>%
+                ungroup() %>%
+                mutate(term = reorder(term, n))
+# Load wordcloud package
+library(wordcloud)
+# Set seed - to make your word cloud reproducible 
+set.seed(1)
+# Create purple_gradient
+blue_gradient <- brewer.pal(10, "Blues")
+# Drop 2 faintest colors
+blue_gradient <- blue_gradient[-(1:2)]
+
+```
+
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# using text analysis - left wing
+library(tm)
+left_text <- data.frame(doc_id=left$DOM_I, text=left$PHIL, stringsAsFactors = FALSE)
+df_source_left <- DataframeSource(left_text)
+tm_left <- VCorpus(df_source_left)
+
+
+tm2_left <- tm_map(tm_left, content_transformer(tolower))
+tm2_left <- tm_map(tm2_left, removePunctuation)
+tm2_left <- tm_map(tm2_left, removeWords, c(stopwords("en")))
+tm2_left <- tm_map(tm2_left, removeWords, my_custom_stopwords)
+tm2_left <- tm_map(tm2_left, removeNumbers)
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+tm2_left <- tm_map(tm2_left, content_transformer(removeNumPunct))
+tm2_left <- tm_map(tm2_left, stripWhitespace)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# stemming
+library(SnowballC)
+# Stem all words
+tm_stemmed_left <- tm_map(tm2_left, stemDocument)
+
+
+
+# Stem completion
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+tm_all_left <- lapply(tm_stemmed_left, stemCompletion2, 
+                     dictionary=tm2_left)
+
+tm_left <- VCorpus(VectorSource(tm_all_left))
+
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tm)
+
+dtm_left<-DocumentTermMatrix(tm_left)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tidytext)
+sotu_td_left <- tidy(dtm_left)
+
+
+sotu_tf_idf_left <-  sotu_td_left %>%
+                bind_tf_idf(term, document, count) %>%  
+                arrange(desc(tf_idf)) 
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# top 300 words using count
+top_words_left <- sotu_tf_idf_left %>%
+  group_by(term) %>%
+  summarise(n = sum(count)) %>%
+                top_n(n = 300, wt = n)  %>%
+                ungroup() %>%
+                mutate(term = reorder(term, n))
+# Load wordcloud package
+library(wordcloud)
+# Set seed - to make your word cloud reproducible 
+set.seed(1)
+# Create purple_gradient
+red_gradient <- brewer.pal(10, "Reds")
+# Drop 2 faintest colors
+red_gradient <- red_gradient[-(1:2)]
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# using text analysis - religious
+library(tm)
+relig_text <- data.frame(doc_id=relig$DOM_I, text=relig$PHIL, stringsAsFactors = FALSE)
+df_source_relig <- DataframeSource(relig_text)
+tm_relig <- VCorpus(df_source_relig)
+
+
+tm2_relig <- tm_map(tm_relig, content_transformer(tolower))
+tm2_relig <- tm_map(tm2_relig, removePunctuation)
+tm2_relig <- tm_map(tm2_relig, removeWords, c(stopwords("en")))
+tm2_relig <- tm_map(tm2_relig, removeWords, my_custom_stopwords)
+tm2_relig <- tm_map(tm2_relig, removeNumbers)
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+tm2_relig <- tm_map(tm2_relig, content_transformer(removeNumPunct))
+tm2_relig <- tm_map(tm2_relig, stripWhitespace)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE,comment = '', echo=FALSE}
+# stemming
+library(SnowballC)
+# Stem all words
+tm_stemmed_relig <- tm_map(tm2_relig, stemDocument)
+
+# Stem completion
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+tm_all_relig <- lapply(tm_stemmed_relig, stemCompletion2, 
+                     dictionary=tm2_relig)
+
+tm_relig <- VCorpus(VectorSource(tm_all_relig))
+
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tm)
+
+dtm_relig<-DocumentTermMatrix(tm_relig)
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tidytext)
+sotu_td_relig <- tidy(dtm_relig)
+
+sotu_tf_idf_relig <-  sotu_td_relig %>%
+                bind_tf_idf(term, document, count) %>%  
+                arrange(desc(tf_idf)) 
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# top 300 words using count
+top_words_relig <- sotu_tf_idf_relig %>%
+  group_by(term) %>%
+  summarise(n = sum(count)) %>%
+                top_n(n = 300, wt = n)  %>%
+                ungroup() %>%
+                mutate(term = reorder(term, n))
+# Load wordcloud package
+library(wordcloud)
+# Set seed - to make your word cloud reproducible 
+set.seed(1)
+# Create purple_gradient
+green_gradient <- brewer.pal(10, "Greens")
+# Drop 2 faintest colors
+green_gradient <- green_gradient[-(1:2)]
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# using text analysis - ethno
+library(tm)
+ethno_text <- data.frame(doc_id=ethno$DOM_I, text=ethno$PHIL, stringsAsFactors = FALSE)
+df_source_ethno <- DataframeSource(ethno_text)
+tm_ethno <- VCorpus(df_source_ethno)
+
+
+tm2_ethno <- tm_map(tm_ethno, content_transformer(tolower))
+tm2_ethno <- tm_map(tm2_ethno, removePunctuation)
+tm2_ethno <- tm_map(tm2_ethno, removeWords, c(stopwords("en")))
+tm2_ethno <- tm_map(tm2_ethno, removeWords, my_custom_stopwords)
+tm2_ethno <- tm_map(tm2_ethno, removeNumbers)
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+tm2_ethno <- tm_map(tm2_ethno, content_transformer(removeNumPunct))
+tm2_ethno <- tm_map(tm2_ethno, stripWhitespace)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# stemming
+library(SnowballC)
+# Stem all words
+tm_stemmed_ethno <- tm_map(tm2_ethno, stemDocument)
+
+
+# Stem completion
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+tm_all_ethno <- lapply(tm_stemmed_ethno, stemCompletion2, 
+                     dictionary=tm2_ethno)
+
+tm_ethno <- VCorpus(VectorSource(tm_all_ethno))
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tm)
+
+dtm_ethno<-DocumentTermMatrix(tm_ethno)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tidytext)
+sotu_td_ethno <- tidy(dtm_ethno)
+
+sotu_tf_idf_ethno <-  sotu_td_ethno %>%
+                bind_tf_idf(term, document, count) %>%  
+                arrange(desc(tf_idf)) 
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# top 300 words using count
+top_words_ethno <- sotu_tf_idf_ethno %>%
+  group_by(term) %>%
+  summarise(n = sum(count)) %>%
+                top_n(n = 300, wt = n)  %>%
+                ungroup() %>%
+                mutate(term = reorder(term, n))
+# Load wordcloud package
+library(wordcloud)
+# Set seed - to make your word cloud reproducible 
+set.seed(1)
+# Create purple_gradient
+purple_gradient <- brewer.pal(10, "Purples")
+# Drop 2 faintest colors
+purple_gradient <- purple_gradient[-(1:2)]
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# using text analysis - single
+library(tm)
+single_text <- data.frame(doc_id=single$DOM_I, text=single$PHIL, stringsAsFactors = FALSE)
+df_source_single <- DataframeSource(single_text)
+tm_single <- VCorpus(df_source_single)
+
+
+tm2_single <- tm_map(tm_single, content_transformer(tolower))
+tm2_single <- tm_map(tm2_single, removePunctuation)
+tm2_single <- tm_map(tm2_single, removeWords, c(stopwords("en")))
+tm2_single <- tm_map(tm2_single, removeWords, my_custom_stopwords)
+tm2_single <- tm_map(tm2_single, removeNumbers)
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+tm2_single <- tm_map(tm2_single, content_transformer(removeNumPunct))
+tm2_single <- tm_map(tm2_single, stripWhitespace)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# stemming
+library(SnowballC)
+# Stem all words
+tm_stemmed_single <- tm_map(tm2_single, stemDocument)
+
+# Stem completion
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+tm_all_single <- lapply(tm_stemmed_single, stemCompletion2, 
+                     dictionary=tm2_single)
+
+tm_single <- VCorpus(VectorSource(tm_all_single))
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tm)
+
+dtm_single<-DocumentTermMatrix(tm_single)
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(tidytext)
+sotu_td_single <- tidy(dtm_single)
+
+
+sotu_tf_idf_single <-  sotu_td_single %>%
+                bind_tf_idf(term, document, count) %>%  
+                arrange(desc(tf_idf)) 
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+# top 300 words using count
+top_words_single <- sotu_tf_idf_single %>%
+  group_by(term) %>%
+  summarise(n = sum(count)) %>%
+                top_n(n = 300, wt = n)  %>%
+                ungroup() %>%
+                mutate(term = reorder(term, n))
+# Load wordcloud package
+library(wordcloud)
+# Set seed - to make your word cloud reproducible 
+set.seed(1)
+# Create purple_gradient
+orange_gradient <- brewer.pal(10, "Oranges")
+# Drop 2 faintest colors
+orange_gradient <- orange_gradient[-(7:10)]
+
+```
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+layout(matrix(c(2, 1), nrow=1), heights=c(1, 4))
+par(mar=rep(0, 4))
+plot.new()
+text(x=0.5, y=0.5, "Extreme Right Wing")
+wordcloud(top_words_right$term, top_words_right$n, 
+         max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = blue_gradient, main = "Title")
+plot.new()
+text(x=0.5, y=0.5, "Extreme Left Wing")
+wordcloud(top_words_left$term, top_words_left$n, 
+         max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = red_gradient)
+plot.new()
+text(x=0.5, y=0.5, "Religious")
+wordcloud(top_words_relig$term, top_words_relig$n, 
+         max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = green_gradient)
+plot.new()
+text(x=0.5, y=0.5, "Ethno-Nationalist/Separatist")
+wordcloud(top_words_ethno$term, top_words_ethno$n, 
+         max.words = 100,scale=c(2, .2), random.order = FALSE, random.color = FALSE, colors = purple_gradient)
+plot.new()
+text(x=0.5, y=0.5, "Single Issue")
+wordcloud(top_words_single$term, top_words_single$n, 
+         max.words = 100,scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors =orange_gradient)
+```
+
+The founding philosophy describes the group's mission, raison d'être and epistemological concerns. To investigate the similarities and differences in missions across the ideologies, the word clouds above show the most frequent terms used in describing the founding philosophies of different idologies, colour coded by ideology type.
+
+Comparing the terms used in the founding philosophy across the 5 dominant ideologies, there appears to be common terms like "attack", "government", "political" and "revolutionaries" across most of the groups, suggesting certain common missions of political change as suggested by these terms. On the other hand, some groups have more similar focus like "struggle" and "action" used more commonly for Extreme Right Wing and Religious, where these groups may adopt more active philosophies. The Extreme Right Wing, Religious and Ethno-Nationalist/Separatist may also have similar focus on racial issues with frequent terms like "jewish", "black" and "white", suggestive of possible groups sparked by racial discontent.
+
+
+## Network Visualization - How Do They Interact 
+
+In the network visualisation, the colour of the nodes represent the ideology of a terrorist organisation, the size of the node represents the number of years the organisation has been active for, and the line type of each edge represents whether an edge is between nodes who subscribe to the same or different ideologies.
+
+From the visualisation, we find terrorist networks are organised into one large interconnected component and five smaller disparate components. The five smaller disparate components are more or less homogenous by ideology and in the large interconnected component, terrorist organisations with the same ideology cluster together,
+
+From the names of the terrorist organisations in the five smaller disparate components, we can roughly tell that they comprise a far-right White Nationalist group, a fundamentalist Islamic group, a Cuban ethno-nationalist group, a Zionist group and an anti-communist group. 
+
+In the large inter-connected node, we also see four distinct groups. The first group comprises a Puerto-Rican ethno-nationalist group; the second comprises a far-left group; the third comprises foreign militant organisations, and the fourth comprises environmental groups.
+
+The visualisation also reveal that the longest-surviving organisations such as Macheteros and the Black Liberation Army are most  central to their groups and the larger network.
+
+
+```{r, dpi=300, fig.align='center', fig.height = 8, fig.width = 8, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+
+#STATIC NETWORK
+
+require(rgdal)
+require(leaflet)
+require(dplyr)
+require(plyr)
+require(magrittr)
+require(RColorBrewer)
+require(stringr)
+require(igraph)
+require(psych)
+require(knitr)
+require(ggplot2)
+require(ggpubr)
+require(ggthemes)
+require(ggrepel)
+require(ggnetwork)
+require(igraph)
+require(intergraph)
+require(extrafont)
+loadfonts()
+
+
+data <- read.csv("Terrorist selected variables.csv")
+data <- data[,c(1:41)]
+data$ORGNAME <- gsub("\\s*\\([^\\)]+\\)","",as.character(data$ORGNAME))
+data$DOM_I<- as.factor(data$DOM_I)
+data$DOM_I<- revalue(data$DOM_I, c("1"="Right-Wing", "2"="Left-Wing", "3"="Religious", "4"="Ethno-nationalist", "5"="Single Issue", "-99"="Unknown"))
+data$DOM_I<- as.character(data$DOM_I)
+data$ORGNAME<- as.character(data$ORGNAME)
+
+full_el <- read.csv("terroristedgelist.csv")
+network <- graph.data.frame(full_el)
+matrix <- get.adjacency(network, sparse=FALSE)
+network <- graph.adjacency(as.matrix(matrix),mode="undirected",weighted=NULL, diag = F) 
+
+igraph_el <- as.data.frame(get.edgelist(network, names=TRUE))
+colnames(igraph_el) <- c("Source", "Target")
+
+ideology_df <- as.data.frame(cbind(data$ORGNAME,as.character(data$DOM_I)))
+colnames(ideology_df) <- c("ORGNAME", "DOM_I")
+igraph_el <- dplyr::full_join(igraph_el, ideology_df, by = c("Source"="ORGNAME"))
+colnames(igraph_el)[which(names(igraph_el) == "DOM_I")] <- "Ideology.source"
+igraph_el <- dplyr::full_join(igraph_el, ideology_df, by = c("Target"="ORGNAME"))
+colnames(igraph_el)[which(names(igraph_el) == "DOM_I")] <- "Ideology.target"
+
+igraph_el$Ideology.match <- ifelse(igraph_el$Ideology.source==igraph_el$Ideology.target, 0, 1)
+E(network)$Ideology.match <- igraph_el$Ideology.match
+
+data$yearsactive <- data$USATK_LAST_YEAR-data$USATK_FIRST_YEAR + 1
+data$firstdecade <- round_any(data$USATK_FIRST_YEAR, 10, f = floor)
+
+V(network)$Ideology=as.character(data$DOM_I[match(V(network)$name,data$ORGNAME)])
+V(network)$Yearsactive=data$yearsactive[match(V(network)$name,data$ORGNAME)]
+V(network)$Firstdecade=as.character(data$firstdecade[match(V(network)$name,data$ORGNAME)])
+
+set.seed(2104)
+terroristnetwork_df <- ggnetwork(network, layout = "fruchtermanreingold", cell.jitter = 0.75)
+terroristnetwork_df$Ideology <- factor(terroristnetwork_df$Ideology, levels = c("Right-Wing", "Left-Wing", "Religious", "Ethno-nationalist", "Single Issue"))
+terroristnetwork_df$Yearsactive <- as.numeric(terroristnetwork_df$Yearsactive)
+ggplot(terroristnetwork_df, aes(x, y, xend = xend, yend = yend)) + geom_edges(aes(linetype=as.factor(Ideology.match)), alpha = 1, colour="gray") + geom_nodes(aes(color=Ideology, size=Yearsactive), alpha=0.8) + geom_nodelabel_repel(aes(label = vertex.names), label.padding=0.05, size = 2.5, family="Garamond") + ggtitle('Terrorist Networks') + theme_tufte() + theme(legend.position = "bottom", legend.box = "vertical", plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"), axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()) + scale_colour_manual(values = c('blue', 'red', 'green', 'purple', 'orange')) + guides(linetype=FALSE, size=guide_legend(title="Years Active"))
+```
+
+```{r, dpi=300, fig.align='center', fig.height = 10, fig.width = 10, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+#INTERACTIVE NETWORK
+
+require(visNetwork)
+
+nodes <- as.data.frame(cbind(V(network)$name, V(network)$Ideology, V(network)$Yearsactive))
+colnames(nodes) <- c("id", "Ideology", "Years Active")
+nodes$`Years Active` <- as.numeric(as.character(nodes$`Years Active`))
+nodes$Ideology <- factor(nodes$Ideology, levels = c("Right-Wing", "Left-Wing", "Religious", "Ethno-nationalist", "Single Issue"))
+links <- na.omit(igraph_el)
+links <- links [,c(1,2,5)]
+colnames(links ) <- c("from", "to", "Match")
+nodes$shape <- "dot"  
+nodes$title <- paste("Perpetrator:",nodes$id,"<br/>","Ideology:", nodes$Ideology,"<br/>", "Years Active:", nodes$`Years Active`)
+nodes$label <- nodes$id
+nodes$borderWidth <- 2
+nodes$size <- 8*sqrt(nodes$`Years Active`)
+nodes$group <- nodes$Ideology
+nodes$group <- factor(nodes$group, levels = c("Right-Wing", "Left-Wing", "Religious", "Ethno-nationalist", "Single Issue"))
+nodes$color.background <- c('blue', 'red', 'green', 'purple', 'orange')[nodes$Ideology]
+nodes$color.border <- "gray"
+nodes$color.highlight.background <- "black"
+nodes$color.highlight.border <- "black"
+links$dashes <- ifelse(links$Match==0, FALSE,TRUE)
+links$color <- "gray"    
+visNetwork(nodes, links , width="100%", height="500px", main="Terrorist Networks") %>% visInteraction(navigationButtons = TRUE) %>% visOptions(highlightNearest = TRUE, selectedBy = "Ideology") %>% visGroups(groupname = "Right-Wing", color = ('lightblue')) %>% visGroups(groupname = "Left-Wing", color = ('lightcoral')) %>% visGroups(groupname = "Religious", color = ('lightgreen')) %>% visGroups(groupname = "Ethno-nationalist", color = ('orchid')) %>% visGroups(groupname = "Single Issue", color = ('orange')) %>% visLegend(useGroups = TRUE)
+```

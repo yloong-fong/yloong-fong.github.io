@@ -1,0 +1,5 @@
+name: "Terrorism Visualisations"
+output_dir: "."
+output:
+  html_document:
+    theme: paper
