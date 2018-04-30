@@ -60,6 +60,17 @@ terror2 <- terror %>%
 
 terror_left <- filter(terror2, Ideology == "Left-Wing")
 terror_right <- filter(terror2, Ideology == "Right-Wing")
+
+
+plot1 <- ggplot(terror2, aes(x = iyear,y = total, 
+                                label = nkills)) +    
+  geom_line(aes(colour = Ideology), na.rm = TRUE) + 
+  ylab("Number of Attacks each year") + 
+  labs(title = "Number of Attacks over time") + 
+  theme_economist_white() + 
+  theme(axis.text.x = element_text(size = 7.5))
+ggplotly(plot1)
+
 g <- terror2 %>% group_by(Ideology) %>% 
   plot_ly() %>% layout(title = "Line graph for Number of Attacks over time", 
                        xaxis = list(title = "Year"), 
