@@ -273,11 +273,11 @@ terror = terror[!terror$DOM_I == -99,]
 
 ```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
 #subset by ideologies
-right = terror[!terror$DOM_I == 1,]
-left = terror[!terror$DOM_I == 2,]
-relig = terror[!terror$DOM_I == 3,]
-ethno = terror[!terror$DOM_I == 4,]
-single = terror[!terror$DOM_I == 5,]
+right = terror[terror$DOM_I == 1,]
+left = terror[terror$DOM_I == 2,]
+relig = terror[terror$DOM_I == 3,]
+ethno = terror[terror$DOM_I == 4,]
+single = terror[terror$DOM_I == 5,]
 ```
 
 
@@ -697,7 +697,7 @@ wordcloud(top_words_single$term, top_words_single$n,
          max.words = 100,scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors =orange_gradient)
 ```
 
-The founding philosophy describes the group's mission, raison d'être and epistemological concerns. To investigate the similarities and differences in missions across the ideologies, the word clouds above show the most frequent terms used in describing the founding philosophies of different idologies, colour coded by ideology type.
+The founding philosophy describes the group's mission, raison d'??tre and epistemological concerns. To investigate the similarities and differences in missions across the ideologies, the word clouds above show the most frequent terms used in describing the founding philosophies of different idologies, colour coded by ideology type.
 
 Comparing the terms used in the founding philosophy across the 5 dominant ideologies, there appears to be common terms like "attack", "government", "political" and "revolutionaries" across most of the groups, suggesting certain common missions of political change as suggested by these terms. On the other hand, some groups have more similar focus like "struggle" and "action" used more commonly for Extreme Right Wing and Religious, where these groups may adopt more active philosophies. The Extreme Right Wing, Religious and Ethno-Nationalist/Separatist may also have similar focus on racial issues with frequent terms like "jewish", "black" and "white", suggestive of possible groups sparked by racial discontent.
 
