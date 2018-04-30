@@ -51,7 +51,7 @@ Armed Assualts are the most common form of terrorist attacks, followed by assass
 For armed assault attacks, a large majority of the terrorism groups adopt the left-wing and right-wing ideologies.
 
 
-```{r, comment = '', echo=FALSE}
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
 library(plotly)
 terror2 <- terror %>% 
   group_by(iyear, Ideology) %>% 
@@ -676,11 +676,11 @@ orange_gradient <- orange_gradient[-(7:10)]
 layout(matrix(c(2, 1), nrow=1), heights=c(1, 4))
 par(mar=rep(0, 4))
 plot.new()
-text(x=0.5, y=0.5, "Extreme Right Wing")
+text(x=0.5, y=0.5, "Right-Wing")
 wordcloud(top_words_right$term, top_words_right$n, 
          max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = blue_gradient, main = "Title")
 plot.new()
-text(x=0.5, y=0.5, "Extreme Left Wing")
+text(x=0.5, y=0.5, "Left-Wing")
 wordcloud(top_words_left$term, top_words_left$n, 
          max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = red_gradient)
 plot.new()
@@ -688,7 +688,7 @@ text(x=0.5, y=0.5, "Religious")
 wordcloud(top_words_relig$term, top_words_relig$n, 
          max.words = 100, scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors = green_gradient)
 plot.new()
-text(x=0.5, y=0.5, "Ethno-Nationalist/Separatist")
+text(x=0.5, y=0.5, "Ethno-nationalist")
 wordcloud(top_words_ethno$term, top_words_ethno$n, 
          max.words = 100,scale=c(2, .2), random.order = FALSE, random.color = FALSE, colors = purple_gradient)
 plot.new()
@@ -697,9 +697,16 @@ wordcloud(top_words_single$term, top_words_single$n,
          max.words = 100,scale=c(2, .2), random.order = FALSE, random.color = FALSE,colors =orange_gradient)
 ```
 
-The founding philosophy describes the group's mission, raison d'??tre and epistemological concerns. To investigate the similarities and differences in missions across the ideologies, the word clouds above show the most frequent terms used in describing the founding philosophies of different idologies, colour coded by ideology type.
+The founding philosophy describes the group's mission, raison d'etre and epistemological concerns. To investigate the similarities and differences in missions across the ideologies, the word clouds above show the most frequent terms used in describing the founding philosophies of different idologies, colour coded by ideology type.
 
-Comparing the terms used in the founding philosophy across the 5 dominant ideologies, there appears to be common terms like "attack", "government", "political" and "revolutionaries" across most of the groups, suggesting certain common missions of political change as suggested by these terms. On the other hand, some groups have more similar focus like "struggle" and "action" used more commonly for Extreme Right Wing and Religious, where these groups may adopt more active philosophies. The Extreme Right Wing, Religious and Ethno-Nationalist/Separatist may also have similar focus on racial issues with frequent terms like "jewish", "black" and "white", suggestive of possible groups sparked by racial discontent.
+Comparing the terms used in the founding philosophy across the 5 dominant ideologies, there appears to be a common theme of race driving the 5 ideologies, while each taking a different stance, suggestive of groups under these ideologies sparked by racial discontent. Examining the top race-affiliated words for each ideology, there is an apparent difference in racial stance for the first 4 ideologies, with Right-Wing groups focusing on "white", Left-Wing groups focusing on "black", Religious groups on "muslim" and Ethno-nationalist on "jewish'.
+
+In addition, there appears to be a common theme of religion with the Right-Wing and Religious groups, with common top words like "christian", albeit the latter ideology having missions mostly related to "islam".
+
+Moreover, the Left-Wing and Ethno-nationalist appear to have similar philosophies driven by missions for freedom with words like "struggle", "oppressed" and "independence", while the Right-Wing has more "political" and "federal" concerns. 
+
+Lastly, the Single Issue groups appear to be driven by a wide spectrum of concerns, with similar concerns with the other ideologies like "government" and "liberation", but also entirely different issues such as "animal", "cuban" and "environment".
+
 
 
 ## Network Visualization - How Do They Interact 
