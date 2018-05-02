@@ -8,7 +8,7 @@ body {
 text-align: justify}
 </style>
 
-```{r 2.1, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+```{r 2.1, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE, echo=FALSE}
 
 knitr::opts_chunk$set(echo = FALSE)
 

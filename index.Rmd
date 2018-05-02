@@ -9,4 +9,4 @@ text-align: justify}
 
 ## What is this page about?
 
-Hi there! I'm a Master's student in Columbia's Quantitative Methods in Social Sciences programme. As part of the course, we were asked to complete a few data visualisation assignments on different topics of interest. I have decided to compile the different visualisations on this sight because I think they are rather interesting and insightful. 
+Hi there! I'm a Master's student in Columbia's Quantitative Methods in Social Sciences programme. As part of the course, we were asked to complete a few data visualisation assignments on different topics of interest. I have decided to compile the different visualisations on this site because I think they are rather interesting and insightful. 
