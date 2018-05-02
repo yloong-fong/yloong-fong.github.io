@@ -1,0 +1,450 @@
+---
+title: "Data Visualisations of Kickstarter Projects"
+output: html_document
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE, echo=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+require(magrittr)
+require(dplyr)
+require(ggplot2)
+require(ggrepel)
+require(ggthemes)
+require(extrafont)
+require(RColorBrewer)
+require(rgdal)
+require(leaflet)
+require(tm)
+require(tidytext)
+require(wordcloud)
+require(tidyr)
+require(quanteda)
+require(foreach)
+require(glue)
+loadfonts()
+```
+
+\newline
+
+#### Setup
+
+\newline
+
+For this exercise, I marginally cleaned the provided kickstarter projects data by removing any entry that had the same blurb and id.
+
+\newline
+
+#### Part 1a
+
+\newline
+
+To determine which category of projects are most successful, I first used a **pyramid plot** to visualise the number of projects in each category that has met or has not met the funding target that it has set for itself.The variable "state" was used for this and it was recoded such that the states "cancelled", "failed", "suspended" and "live" are all considered unsuccessful. 
+
+\newline
+
+From the pyramid plot, we find that if we define success as whether projects have met their target, then music projects are most successful with just under 15,000 successful projects. However, there are also many music projects (around 7,000) that fail. Film/video and publishing projects are also more likely to meet their targets than to fail and they have the second and third highest number of successes respectively. On the other end, technology and food projects are much more likely to fail than to meet their targets. For both these categories, slightly less than 5,000 projects succeed and around 8,000 fail. 
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Load and clean kickstarter file
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+kickstarter <- read.csv('kickstarter_projects.csv')
+kickstarter$uniqid <- paste(kickstarter$blurb, kickstarter$id, sep=" ")
+kickstarter <- kickstarter[!duplicated(kickstarter$uniqid),]
+
+#Set up data to create pyramid plot of successful/unsuccessful projects by category
+kickstarter$state2 <- ifelse(kickstarter$state=="successful", "Successful", "Unsuccessful")
+state <- kickstarter %>% group_by(top_category, state2) %>% summarize(nostate=length(state2))
+
+#Plot pyramid plot
+ggplot(state , aes(x = reorder(top_category, -nostate), y = nostate, fill = state2)) + geom_bar(data=subset(state, state2 == "Successful"), stat='identity') +  geom_bar(data=subset(state, state2 == "Unsuccessful"), stat='identity', aes(y=nostate*(-1))) + scale_y_continuous(breaks = seq(-10000, 150000, 5000), labels=abs(seq(-10000, 150000, 5000))) + coord_flip() + scale_fill_manual(values=c("royalblue", "firebrick"))  + labs(x="Kickstarter Categories", y="No Successful/Unsuccessful") + ggtitle('No Successful/Unsuccessful Per Category') + theme_tufte() +theme(legend.position = c(0.85,0.7), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + guides(fill=guide_legend(title="Successful/Unsuccessful"))
+```
+
+\newline
+
+We may be skeptical of a variable that just looks at whether project meets its target. In some categories, it is more likely that projects set a low symbolic target of even $0 that can very easily be met. Moreover, simply meeting a target does not actually tell us that the project was very impactful. 
+
+\newline
+
+Another way of defining success would therefore be to visualise the mean amount pledged in each category. For robustness, we should also compare that to the mean achievement ratio (mean amount pledged/ mean funding target) as some categories may have received more funding simply because they asked for more. I therefore create a **bubble chart** that visualises both variables.
+
+\newline
+
+From the chart, we find that the most successful category is games. It not only has the second highest mean amount pledged, but this amount pledged also far surpasses the targets the projects usually set for themselves as evident by the achievement ratio. Technology and design projects both also have high mean amount pledged, but their achievement ratios are lower probably because they set higher targets for themselves. Comics projects do not have a high mean amount pledged (slightly less than $10,000), but it surprisingly is successful in its achievement ratio. On the other end, the least successful categories are journalism, dance, theater and photography, which all have low mean amount pledged and low achievement ratios.
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Create achievement ratio variable
+kickstarter$achievementratio <- kickstarter$pledged/kickstarter$goal
+
+#Calculate mean amount pledged and mean achievement ratios for each category
+meanpledged<- kickstarter %>% group_by(top_category) %>% summarize(meanpledged=mean(pledged))
+meanachievementratio<- kickstarter %>% group_by(top_category) %>% summarize(meanachievementratio=mean(achievementratio, na.rm=T))
+merge <- merge(meanpledged, meanachievementratio, by="top_category")
+
+#Plot bubble chart of mean amount pledged and mean achievement ratio for each category
+coul <- brewer.pal(11, "Spectral")
+coul = colorRampPalette(coul)(15)
+ggplot(data=merge, aes(x=meanpledged, y=meanachievementratio, label=top_category)) + geom_point(aes(color=top_category), size = 4, alpha = 0.5) + geom_text_repel(aes(label=top_category), size=2.5, family="Garamond") + labs(x="Mean Amount Pledged ($)", y="Mean Achievement Ratio") + ggtitle('Mean Amount Pledged and Mean Achievement Ratio per Kickstarter Category') + theme_tufte() + guides(color=FALSE) + scale_color_manual(values = coul) + theme(plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+```
+
+\newline
+
+#### Part 1b
+
+\newline
+
+I now use a **leaflet interactive map** to visualise which states and cities have the most projects that meet their targets. When visualising for states, I normalised by population as well (this could not be done for cities due to lack of data). 
+
+\newline
+
+From the map, we find that the states that are most successful in kickstarter projects cluster in the West and Northeast coast. There are many expected successful states such California, Seattle, New York and Massachusetts - these are the states where many of the tech giants hail from and probably have more innovative populations. I was, however, also surprised that Utah, Colorado and Minnesota have high numbers of successful kickstarter projects per capita. On the other end, the least successful states are in the middle of the country and the south, including states such as Iowa, Kansas and Alabama. Turning to cities, we find expectedly that the cities with the most number of successful projects (the largest circles) are the big global cities of Los Angeles, San Francisco, New York and Seattle.
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Loading in state data
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+population <- read.csv('population2017.csv')
+abbreviations <- read.csv('states.csv')
+statedata <- merge(abbreviations, population, by="State")
+
+#Creating data on no of successful projects by state (and normalise by population as per last step)
+location_state <- kickstarter %>% group_by(location_state, state2) %>% summarize(successes=length(state2)) %>% filter(state2=="Successful")
+location_state <- merge(location_state, statedata, by.x="location_state", by.y="Abbreviation")
+location_state$successpercapita <- location_state$successes/location_state$X2017
+
+#Reading shape files of USA
+usa <- readOGR('cb_2016_us_state_20m/cb_2016_us_state_20m.shp')
+usa@data$id  <- 1:nrow(usa@data)
+usa@data <- merge(usa@data, location_state, by.x="STUSPS", by.y= "location_state", all.x=T)
+usa@data <- usa@data[order(usa@data$id), ]
+
+#Loading in city data
+cities <- read.csv('uscitiesv1.3.csv')
+cities$fullcity <- paste(cities$city, cities$state_id, sep=", ")
+
+#Creating data on no of successful projects by city
+kickstarter$fullcity <- paste(kickstarter$location_town, kickstarter$location_state, sep=", ")
+location_city <- kickstarter %>% group_by(fullcity, state2) %>% summarize(successes=length(state2)) %>% filter(state2=="Successful") %>% arrange(desc(successes)) %>% ungroup() %>% mutate(rank=row_number()) %>% filter(rank<=50) 
+location_city <- merge(location_city, cities, by="fullcity", all.x=T)
+
+#Creating Leaflet Plot
+leaflet(usa, width ="100%", height = "400px" ) %>% setView(lat=33, lng=-93 , zoom=3.5) %>% addPolygons(stroke = TRUE, smoothFactor = 0.5, weight=1, color='#333333', opacity=1, fillColor = ~colorQuantile("BrBG", usa@data$successpercapita)(usa@data$successpercapita), fillOpacity = 0.8, label = usa@data$NAME, popup = paste(usa@data$NAME,"<br/>","No of Successful Projects:", usa@data$successes,"<br/>","2017 Population:", usa@data$X2017, "<br/>", "Successeful Projects Per Capita:", usa@data$successpercapita), highlightOptions = highlightOptions(color='#000000', weight = 3)) %>% addLegend("bottomright", pal = colorNumeric("BrBG", usa@data$successpercapita), values = ~usa@data$successpercapita, title = htmltools::HTML("Successful<br/> Projects<br/>Per Capita"), opacity = 0.8)  %>% addCircleMarkers(data=location_city, lng = ~lng, lat = ~lat, color='red', radius=sqrt(location_city$successes/100), weight=3, opacity = 1, label = location_city$fullcity, popup = paste(location_city$fullcity,"<br/>","No of Successful Projects:", location_city$successes)) 
+```
+
+\newline
+
+#### Part 2a
+
+\newline
+
+I now run some text analysis on the blurbs of the 1000 most successful projects, defined as projects with the highest amount pledged, and a random sample of 1000 unsuccessful projects, defined as projects with $0 pledged. 
+
+\newline
+
+Before running the text analysis, I first cleaned the text by: 
+
+\newline
+
+  + Removing any websites (defined as strings that begin with www)
+  + Removing any numbers
+  + Removing any punctuation
+  + Removing any words that are all in upper case (these words usually indicate a brand name)
+  + Changing all words to lower case and removing stop words
+  + Removing white spaces
+  
+\newline
+
+I then stemmed and completed the stems of all words such that words of the same stem would be considered to be the same. From these bag of words, I created a document-term matrix and calculated term frequencies and document frequencies. Term frequencies refer to the average percentage of the time a word appears in a blurb whereas document frequencies refer to the number of blurbs in a collection that contain a given word. 
+
+\newline
+
+I then generated two **word clouds** to visualise the term and document frequencies of the words in the most successful projects. The term frequency cloud is frankly rather uninsightful as it reveals that the words that appear most frequently in successful blurbs are "thing" and "hold", which are common every day words. In small chunks of texts such as blurbs, term frequencies may not be the most useful as each word is likely to be counted to take up a large percentage of the document even if it only appears once. 
+
+\newline
+
+The document frequency cloud is much more revealing as it tells us which words do the blurbs of successful projects most have in common. From the document-frequency cloud we find that projects with the highest amount pledged often have the words "game" and "world". The word "game" is unsurprising considering that games is the most successful category of kickstarter projects. The word "world" is interesting as it suggests that kickstarter projects that emphasise internationalism tend to be more successful.
+
+\newline
+
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Getting sample of most successful and unsuccessful projects
+kickstarter$rank <- rank(-kickstarter$pledged, na.last = TRUE, ties.method = "random")
+successfulproj <- subset(kickstarter, kickstarter$rank <= 1000)
+unsuccessfulproj <- subset(kickstarter, kickstarter$pledged==0)
+unsuccessfulproj <- unsuccessfulproj[sample(nrow(unsuccessfulproj), 1000, replace=FALSE, set.seed(5)), ]
+sampleproj <- rbind(successfulproj, unsuccessfulproj)
+
+#Creating corpus with sample
+sampleproj$doc_id <- sampleproj$id
+sampleproj$text <- sampleproj$blurb
+sampleproj_source <- DataframeSource(sampleproj)
+sampleproj_corpus <- VCorpus(sampleproj_source)
+
+#Clearning functions
+removeUppCase <- function(x){gsub("\\b[A-Z]+\\b", "", x)} #Removing Upper Case words as requested
+removeWebsites <- function(x){gsub("www\\S+\\s*", "", x)} #Removing websites 
+clean_corpus <- function(corpus){
+      corpus <- tm_map(corpus, content_transformer(removeWebsites))
+      corpus <- tm_map(corpus, content_transformer(removeNumbers))
+      corpus <- tm_map(corpus, content_transformer(removePunctuation))
+      corpus <- tm_map(corpus, content_transformer(removeUppCase))
+      corpus <- tm_map(corpus, content_transformer(tolower))
+      corpus <- tm_map(corpus, content_transformer(removeWords), c(stopwords("en"))) 
+      corpus <- tm_map(corpus, content_transformer(stripWhitespace))
+      return(corpus)}
+
+#Cleaned and stemmed corpus
+sampleproj_clean <- clean_corpus(sampleproj_corpus)
+sampleproj_stemmed <- tm_map(sampleproj_clean, stemDocument)
+
+#Completing stem functions
+stemCompletion2 <- function(x, dictionary) {
+     x <- unlist(strsplit(as.character(x), " "))
+     x <- x[x != ""]
+     x <- stemCompletion(x, dictionary=dictionary)
+     x <- paste(x, sep="", collapse=" ")
+     PlainTextDocument(stripWhitespace(x))}
+
+#Completing all stemmed words in corpus
+sampleproj_compl <- lapply(sampleproj_stemmed, stemCompletion2, dictionary=sampleproj_clean)
+sampleproj_all <- as.VCorpus(sampleproj_compl)
+for (i in 1:dim(sampleproj)[1]){
+     sampleproj_all[[i]]$meta$id <- sampleproj[i,"id"]}
+
+#Creating document-term matrix and converting into tidytext format
+sampleproj_dtm <- DocumentTermMatrix(sampleproj_all)
+sampleproj_td <- tidy(sampleproj_dtm)
+sampleproj_tdwmeta <- merge(sampleproj_td, sampleproj, by.x="document", by.y="id")
+
+#Calculating term-frequency and filtering out successful projects
+sampleproj_tf_idf <- sampleproj_td %>% bind_tf_idf(term, document, count) %>% arrange(document)
+sampleproj_tdwmeta_wfrequency <- cbind(sampleproj_tdwmeta,sampleproj_tf_idf)
+sampleproj_tdwmeta_wfrequency <-sampleproj_tdwmeta_wfrequency[,-c(30:32)]
+successfulproj_fulltd <- sampleproj_tdwmeta_wfrequency  %>% filter(pledged>0)
+
+#Calculating document-frequency of successful projects
+successful_proj_df <- successfulproj_fulltd %>% group_by(term) %>% tally()
+
+#Wordclouds of term and document frequency for successful projects
+layout(matrix(c(1, 2, 3, 4), nrow=2, ncol=2), heights=c(1, 2))
+par(mar=c(0.01,0.01,0.01,0.01))
+plot.new()
+text(x=0.5, y=0.5, "Term Frequency of Words \nin Successful Projects", cex=1.5, family="Garamond")
+set.seed(2103)
+wordcloud(successfulproj_fulltd$term, successfulproj_fulltd$tf, max.words = 50, scale = c(2.25, 0.2), colors = "darkred", family="Garamond")
+plot.new()
+text(x=0.5, y=0.5, "Document Frequency of Words \nin Successful Projects", cex=1.5, family="Garamond")
+set.seed(2103)
+wordcloud(successful_proj_df$term, successful_proj_df$n, max.words = 50, scale = c(3.8, 0.2), colors = "indianred", family="Garamond")
+```
+
+
+\newline
+
+#### Part 2b
+
+\newline
+
+We know the words that the blurbs of successful projects most have in common, but how does that compare to the blurbs of unsuccessful projects? I therefore create a **pyramid plot** to visualise the top 20 words in occurrences in both successful and unsuccessful projects. 
+
+\newline
+
+From the pyramid plot, we find that the words that occur most frequently in successful blurbs ("game", "world", "create" and "design") do not appear frequently in unsuccessful blurbs at all. However, we also find that the words that occur most frequently in unsuccessful blurbs ("help", "make" and "new") does also occur rather frequently in successful blurbs. This suggests that while there are some special words that help a projects success, there are no "jinx" words that blurbs should avoid to be successful. 
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Calculating document-frequency of unsuccessful projects
+unsuccessfulproj_fulltd <- sampleproj_tdwmeta_wfrequency  %>% filter(pledged==0)
+unsuccessful_proj_df <- unsuccessfulproj_fulltd %>% group_by(term) %>% tally()
+
+#Filtering words in top 20 of document-frequency of successful and unsuccessful projects
+successful_proj_df$rank <- rank(-successful_proj_df$n, na.last = TRUE, ties.method = "min")
+successful_proj_df_top20 <- subset(successful_proj_df, successful_proj_df$rank <= 20)
+unsuccessful_proj_df$rank <- rank(-unsuccessful_proj_df$n, na.last = TRUE, ties.method = "min")
+unsuccessful_proj_df_top20 <- subset(unsuccessful_proj_df, unsuccessful_proj_df$rank <= 20)
+
+#Finding occurrences of all 40 words in blurbs of successful and unsuccessful projects
+successful_proj_df_top20$rank <- NULL
+names(successful_proj_df_top20)[2] <- "Successful"
+successful_proj_df_top20 <- merge(successful_proj_df_top20 , unsuccessful_proj_df, by="term", all.x=T)
+successful_proj_df_top20$rank <- NULL
+names(successful_proj_df_top20)[3] <- "Unsuccessful"
+successful_proj_df_top20[is.na(successful_proj_df_top20)] <- 0
+
+unsuccessful_proj_df_top20$rank <- NULL
+names(unsuccessful_proj_df_top20)[2] <- "Successful"
+unsuccessful_proj_df_top20 <- merge(unsuccessful_proj_df_top20 , successful_proj_df, by="term", all.x=T)
+unsuccessful_proj_df_top20 $rank <- NULL
+names(unsuccessful_proj_df_top20)[3] <- "Unsuccessful"
+unsuccessful_proj_df_top20[is.na(unsuccessful_proj_df_top20)] <- 0
+
+#Preparing data for pyramid plot
+wordpyramid_data_wide <- rbind(successful_proj_df_top20, unsuccessful_proj_df_top20)
+wordpyramid_data_wide <- wordpyramid_data_wide[!duplicated(wordpyramid_data_wide$term),]
+wordpyramid_data_long <- gather(wordpyramid_data_wide, key="successstate", value="n", -term)
+
+#Plotting pyramid plot
+ggplot(wordpyramid_data_long, aes(x = reorder(term, -n), y = n, fill = successstate)) + geom_bar(data=subset(wordpyramid_data_long, successstate == "Successful"), stat='identity') +  geom_bar(data=subset(wordpyramid_data_long, successstate == "Unsuccessful"), stat='identity', aes(y=n*(-1))) + coord_flip() + scale_fill_manual(values=c("royalblue", "firebrick")) + scale_y_continuous(breaks = seq(-100, 100, 20), labels=abs(seq(-100, 100, 20))) + labs(x="Words", y="Document Frequency") + ggtitle('Document Frequency of Common Words by Project Success') + theme_tufte() +theme(legend.position = c(0.85,0.8), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + guides(fill=guide_legend(title="Successful/\nUnsuccessful Projects"))
+
+```
+
+\newline
+
+#### Part 2c
+
+\newline
+
+I then calculate the readability scores on the raw blurbs (uncleaned/unstemmed) of my sample of projects to determine whether readability scores of a blurb has a relationship with the the amount pledged to the project. The was visualised using a **scatterplot**.
+
+\newline
+
+From the visualisation, we indeed find that the higher the Flesh-Kincaid Grade Level of a project's blurb, the higher the amount pledged to the project (variable scaled by square-rooting). We also find that the grade-level of the blurbs are quite different by project category. Technology and games blurbs are much more likely to have a higher grade level compared to other categories. 
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Calculating readibility scores
+sampleproj_wreadability <- cbind(sampleproj, textstat_readability(as.character(sampleproj$blurb),measure=c('Flesch','Flesch.Kincaid','meanSentenceLength','meanWordSyllables')))
+
+#Plotting scatterplot of amount pledged on blurb readability score
+ggplot(sampleproj_wreadability, aes(x = Flesch.Kincaid, y = sqrt(pledged))) + geom_point(aes(color=top_category), alpha = 0.5) + geom_smooth(method='lm') + scale_color_manual(values = coul) + xlab('Flesch-Kincaid Grade Level') + ylab('Amount Pledged (Scaled)') + guides(color=guide_legend(title="Kickstarter Category")) + ggtitle("Amount Pledged by Flesch-Kincaid Grade Level ") + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+
+```
+
+\newline
+
+#### Part 3a
+
+\newline
+
+Using the Hu and Liu sentiment dictionary, I then created a function to calculate the sentiment score on the raw blurbs (uncleaned/unstemmed) of my sample of projects to determine whether sentiment scores of a blurb has a relationship with the the amount pledged to the project. Because of how short the blurbs are, most blurbs have a sentiment score of -1, 0 or 1. I therefore decided to collapse any score above 0 as having positive sentiment, below 0 as having negative and 0 as neutral. I then used a **boxplot** to visualise the range and median of the amount pledged for projects in each of these sentiment categories. 
+
+\newline
+
+From the boxplot, we indeed find that projects with blurbs that have positive sentiments have a higher median amount pledged (variable scaled by square-rooting). Projects with blurbs that have neutral and negative sentiments both have a median amount pledged of 0 (i.e. the majority of projects with such sentiments are unsuccessful). However, the third quartile (i.e. the 75th percentile) of projects that have neutral sentiments in their blurbs have a higher amount pledged as compared to the third quartile of projects that have negative sentiments in their blurbs. 
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Loading sentiment dictionary
+setwd("~/Documents/GitHub/FONG_YewLoong/HW03/")
+pos <- read.table('positive-words.txt', as.is=T)
+neg <- read.table('negative-words.txt', as.is=T)
+
+#Function to calculate sentiment
+sentiment <- function(words){
+          require(quanteda)
+          tok <- quanteda::tokens(words)
+          pos.count <- sum(tok[[1]]%in%pos[,1])
+          neg.count <- sum(tok[[1]]%in%neg[,1])
+          out <- (pos.count - neg.count)/(pos.count+neg.count)
+          return(out)}
+
+#Calculating sentiment scores and converting into categories (NA values treated as neutral)
+sampleproj_wreadability_wsentiment <- cbind(sampleproj_wreadability, (foreach(a=as.character(sampleproj$blurb), .combine=rbind) %do% try(sentiment(a))))
+names(sampleproj_wreadability_wsentiment)[36] <- "sentiment"
+sampleproj_wreadability_wsentiment$sentiment[is.na(sampleproj_wreadability_wsentiment$sentiment)] <- 0
+sampleproj_wreadability_wsentiment$sentimentcat <- ifelse(sampleproj_wreadability_wsentiment$sentiment>0, "Positive", ifelse(sampleproj_wreadability_wsentiment$sentiment<0, "Negative", ifelse(sampleproj_wreadability_wsentiment$sentiment==0, "Neutral", NA)))
+
+#Plotting boxplot of amount pledged for each sentiment category
+ggplot(sampleproj_wreadability_wsentiment, aes(x = sentimentcat, y = sqrt(pledged))) + geom_point(color="navyblue", alpha = 0.5) + geom_boxplot(fill="white", width=0.2, alpha=0.5) + xlab('Sentiment Category') + ylab('Amount Pledged (Scaled)') + ggtitle("Amount Pledged by Sentiment Category") + coord_flip() + theme_tufte() +theme(plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+```
+
+\newline
+
+#### Part 3b
+
+\newline
+
+I then collapsed all the positive blurbs and negative blurbs together to find out the words used most frequently in these blurbs and how they might be different. For purposes of having an even distribution of blurbs, neutral blurbs were classified as negative blurbs. For visualisation, I created a **comparison cloud**. 
+
+\newline
+
+From the visualisation, I find that the words most used in positive blurbs are "position", "energised" and "perform". On the other end, the words most used in negative blurbs are "limited", "paper" and "science". I cannot discern a clear trend in the difference between the most common words used in positive and negative blurbs.
+
+\newline
+
+``` {r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Filtering out positive/negative blurbs and collapsing into large text chunks
+positiveblurbs_uncollapsed <- subset(sampleproj_wreadability_wsentiment, sentiment>0)
+negativeblurbs_uncollapsed <- subset(sampleproj_wreadability_wsentiment, sentiment<=0)
+PositiveBlurbs <- as.vector(glue::collapse(as.character(positiveblurbs_uncollapsed$blurb), sep = ";;;"))
+NegativeBlurbs <- as.vector(glue::collapse(as.character(negativeblurbs_uncollapsed$blurb), sep = ";;;"))
+
+#Converting vector of text chunks into corpus
+collapsedblurbs <- as.data.frame(rbind(PositiveBlurbs, NegativeBlurbs))
+collapsedblurbs <- tibble::rownames_to_column(collapsedblurbs, "doc_id")
+collapsedblurbs$text <- collapsedblurbs$V1
+collapsedblurbs_source <- DataframeSource(collapsedblurbs)
+collapsedblurbs_corpus <- VCorpus(collapsedblurbs_source)
+
+#Cleaning, stemming and completing stem of corpus
+collapsedblurbs_clean <- clean_corpus(collapsedblurbs_corpus)
+collapsedblurbs_stemmed <- tm_map(collapsedblurbs_clean, stemDocument)
+collapsedblurbs_compl <- lapply(collapsedblurbs_stemmed, stemCompletion2, dictionary=collapsedblurbs_clean)
+collapsedblurbs_all <- as.VCorpus(collapsedblurbs_compl)
+for (i in 1:dim(collapsedblurbs)[1]){
+         collapsedblurbs_all[[i]]$meta$id <- collapsedblurbs[i,"doc_id"]}
+
+#Creating term-document matrix
+collapsedblurbs_tdm <- TermDocumentMatrix(collapsedblurbs_all)
+collapsedblurbs_m <- as.matrix(collapsedblurbs_tdm)
+
+#Plotting comparison cloud
+par(mfrow=c(1,1))
+set.seed(2103)
+comparison.cloud(collapsedblurbs_m, colors = c("navyblue", "indianred"), scale=c(0.1,1.6), title.size= 1, max.words = 100, family="Garamond")
+```
+
+\newline
+
+#### Part 3c
+
+\newline
+
+My final task was to visualise whether emotions associated with certain blurbs had any relationship with the the amount pledged to the project. I determined emotions through an emotions score from the nrc dictionary and used a **faceted scatterplot** for my visualisation. 
+
+\newline
+
+Very interestingly, for most of the emotional categories, blurbs that are associated with more of any emotion, positive or negative, tend to have a lower amount pledged for their projects (variable scaled by square-rooting). This suggests that if projects want to be successful, they should try to use factual words that do not evoke any emotion in the donor. The only exception (very unfortunately) is the emotion of fear. Blurbs that have a higher score on fear tend to have a higher amount pledged for their projects. This unfortunately suggests that one way of encouraging people to donate to projects is to scare them into donating by playing up their fears about an issue. 
+
+\newline
+
+```{r}
+#Creating dictionary
+dictionary <- get_sentiments("nrc") %>% mutate(id=1:n()) %>% spread(sentiment, word)
+dictionary <- apply(dictionary, 2, as.list)
+dictionary <- lapply(dictionary, function(x) x[!is.na(x)])
+dictionary <- dictionary(dictionary)
+
+#Calculating emotions score for each blurb
+sampleproj_all_quanteda <- corpus(sampleproj_all)
+sampleproj_all_emotion_dfm <- dfm(sampleproj_all_quanteda, dictionary=dictionary)
+sampleproj_all_emotion_df <- as.data.frame(as.matrix(sampleproj_all_emotion_dfm))
+sampleproj_all_emotion_df$id <- NULL
+sampleproj_all_emotion_df <- tibble::rownames_to_column(sampleproj_all_emotion_df, "id")
+
+#Converting data on emotions score into long form
+sampleproj_all_emotion_df_long <- gather(sampleproj_all_emotion_df, key="emotion", value="n", -id)
+sampleproj_all_emotion_df_wmeta <- merge(sampleproj_all_emotion_df_long, sampleproj_wreadability_wsentiment, by="id", all.x=T)
+
+#Plotting faceted scatterplot of amount pledged by emotion score
+ggplot(sampleproj_all_emotion_df_wmeta, aes(x = n, y = sqrt(pledged))) + geom_point(aes(color=emotion), alpha = 0.5) + geom_smooth(method='lm') + scale_color_brewer(palette = "Spectral") + facet_wrap(~ emotion, ncol=5) + xlab('Emotion Score') + ylab('Amount Pledged (Scaled)') + guides(color=FALSE) + ggtitle("Amount Pledged by Emotion Score") + theme_tufte() +theme(plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+```

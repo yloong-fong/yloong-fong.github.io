@@ -1,0 +1,490 @@
+---
+title: "Data Visualisations of Twitter in the Senate"
+output: html_document
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE, echo=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+require(magrittr)
+require(dplyr)
+require(tidyr)
+require(lubridate)
+require(glue)
+require(stringr)
+require(tm)
+require(wordcloud)
+require(rtweet)
+require(ggplot2)
+require(ggthemes)
+require(ggrepel)
+require(ggnetwork)
+require(igraph)
+require(intergraph)
+require(RColorBrewer)
+require(extrafont)
+loadfonts()
+```
+
+\newline
+
+#### Setup
+
+\newline
+
+For this exercise, I realised that there are some senators in the "senators_follow.csv" file that are not in the corresponding "senators_twitter.csv" file, presumably because the files were compiled at different times. I therefore subsetted both files to only include senators that have a match on both files, resulting in 95 senators for analysis. 
+
+\newline
+
+#### Part 1a
+
+\newline
+
+Below is a network visualisation of senators, where each vertex represents a senator and each edge represents a directed follow from one senator to another. The vertices are sized according to each senator's in-degree centrality (how many senators follow them) and coloured according to the political party they belong to. The senators with the top 3 in-degree (Jeff Merkley, Mike Crapo, Mark Warner) and out-degree centrality (John McCain, Lisa Murkowski, Susan Collins) have also been marked out.
+
+\newline
+
+Because there are so many senators and most senators follow most other senators, the visualisation is extremely dense at the centre. Senators Claire McCaskill, Bill Nelson, Joni Ernst and (surprisingly) Marco Rubio seem to be least connected to the other senators with the lowest in-degree centralities (as evident from their small node sizes). Senator John McCain is interesting in that even though he follows many senators and has a very high out-degree centrality, his below-average in-degree centrality suggests that not as many senators follow him back. As expected, the network clusters along party lines, with most Democratic senators following other Democratic senators and most Republican senators following other Republican senators. 
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+# Loading data
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+senators <- read.csv('senators_twitter.csv')
+follows <- read.csv('senators_follow.csv')
+senator_tweets <- readRDS('senator_tweets.RDS')
+
+#Subsetting to include senators with match on all files
+senators <- senators %>% filter(Official.Twitter %in% follows$source)
+follows <- subset(follows, following=="TRUE")
+follows <- follows  %>% filter(source %in% senators$Official.Twitter)
+follows <- follows  %>% filter(target %in% senators$Official.Twitter)
+
+#Calculating degree stats and identifying top 3 in/out-degree senators
+outdegree <- follows %>% group_by(source) %>% summarise(outdegree=length(target))
+indegree <- follows %>% group_by(target) %>% summarise(indegree=length(source))
+top3outdegree <- as.data.frame((outdegree[order(-outdegree$outdegree),])[c(1:3),])
+top3indegree <- as.data.frame((indegree[order(-indegree$indegree),])[c(1:3),])
+
+#Creating an edgelist from follows
+edgelist <- follows[,c(1,2)]
+
+#Creating network object (directed without weight)
+matrix <- igraph::get.adjacency(graph.data.frame(edgelist), sparse=FALSE)
+network <- igraph::graph.adjacency(as.matrix(matrix),mode="directed",weighted=NULL, diag = F) 
+
+#Adding attributes to network object - in-degree, out-degree, party affiliation
+V(network)$Indegree <- igraph::degree(network, mode="in")
+V(network)$Outdegree <- igraph::degree(network, mode="out")
+V(network)$Party=as.character(senators$Party.affiliation[match(V(network)$name,senators$Official.Twitter)])
+
+#Plotting network
+set.seed(2103)
+senatorsnetwork_df <- ggnetwork(network, layout = "kamadakawai", cell.jitter = 0.75)
+ggplot(senatorsnetwork_df, aes(x, y, xend = xend, yend = yend)) + geom_edges(alpha = 0.1, size=0.1, arrow = arrow(length = unit(0.3, "lines"), type = "closed")) + geom_nodes(aes(color=Party, size=Indegree), alpha=0.3) + geom_nodes(data=subset(senatorsnetwork_df, vertex.names %in% top3outdegree$source), aes(shape='17'), size=2) + geom_nodes(data=subset(senatorsnetwork_df, vertex.names %in% top3indegree$target), aes(shape='18'), size=2.5) + geom_nodelabel_repel(aes(label = vertex.names), label.padding=0.05, size = 2.5, family="Garamond") + ggtitle('Twitter Network of Senators') + theme_tufte() + theme(legend.position = "right", plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"), axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()) + scale_colour_manual(values = c("royalblue", "seagreen", "firebrick")) + scale_shape_manual(labels = c("Highest Outdegree", "Highest Indegree"), values = c(17, 18)) +  guides(shape=guide_legend(title='Most Central Senators'))
+```
+
+\newline
+
+#### Part 1b
+
+\newline
+
+I next compare the results of automated mechanisms of cluster identification to the actual party identification of senators through the network visualisation below. The colour of the node represents the senator's actual party and the colour of the label represents the estimate from the automated mechanism. 
+
+\newline
+
+I am amazed by the results. The automated mechanism successfully estimated the parties of all Democratic and Republican senators, based on their patterns of twitter follows alone. The mechanism did not manage to classify the two Independent senators correctly and estimated them to be Democratic. This is not entirely surprising considering that they mostly follow/are followed by Democratic senators. 
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Use automated cluster identification mechanism. 
+wc <- cluster_walktrap(network)  
+members <- membership(wc)
+
+#Adding attributes to network object - automated mechanism estimate of party identification
+V(network)$Clusteridentification <- as.character(members)
+
+#Plotting network
+set.seed(2103)
+senatorsnetwork_withcluster_df <- ggnetwork(network, layout = "kamadakawai", cell.jitter = 0.75)
+ggplot(senatorsnetwork_withcluster_df, aes(x, y, xend = xend, yend = yend)) + geom_edges(alpha = 0.1, size=0.1, arrow = arrow(length = unit(0.3, "lines"), type = "closed")) + geom_nodes(aes(color=Party, size=Indegree), alpha=0.3) + geom_nodelabel_repel(aes(label = vertex.names, color=Clusteridentification), label.padding=0.05, size = 2.5, family="Garamond", show.legend = FALSE) + ggtitle('Twitter Network of Senators with Cluster Identification') + theme_tufte() + theme(legend.position = "right", plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"), axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()) + scale_color_manual(breaks=c("Democratic Party","Independent","Republican Party"), values = c("firebrick", "royalblue", "royalblue", "seagreen", "firebrick")) + guides(color=guide_legend(title='Party \n(Node = Actual \n Text = Estimated)'))
+
+```
+
+
+\newline
+
+#### Part 2a
+
+\newline
+
+Below I visualise the time trend of the the senators' top 10 hashtags in their tweets (not including retweets) since 2009. In order to create the plot, I aggregated the frequency of hashtag use by month.
+
+\newline
+
+I use a **sparkline graph** as I want to emphasise the time periods when each hashtag was most popular. We find that "Obamacare"" has consistently been one of the most popular hashtags, with peak use at the end of 2013 and throughout 2016. "mepolitics" has also been consistently popular since 2013, whilst "senate", "SCOTUS" and "WV" has been consistently popular since 2016. There are also some "one-time-hit" hashtags which are popular for a while, but are then almost never used again. These include "Trumpcare", which was very popular in early 2017, and "TaxReform", which was similarly popular in late 2017. In fact these hashtags had the highest and second highest frequency of hashtag use in any single month.  
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Subsetting tweets to remove retweets and adding information on senators
+senator_tweets_nort <- senator_tweets %>% filter(is_retweet=="FALSE")
+senator_tweets_nort <- merge(senator_tweets_nort, senators, by.x="screen_name", by.y="Official.Twitter", all.x=TRUE)
+
+#Unnesting hashtags and rounding up date of tweets to month
+senator_tweets_nort_whashtag <- unnest(senator_tweets_nort, hashtags, .drop=FALSE)
+senator_tweets_nort_whashtag <- senator_tweets_nort_whashtag[!is.na(senator_tweets_nort_whashtag$hashtags),]
+senator_tweets_nort_whashtag$Month_Yr <- floor_date(senator_tweets_nort_whashtag$created_at, "month")
+
+#Identifying top 10 hashtags of all time and filtering tweets with those hashtags
+top10tweets <-senator_tweets_nort_whashtag %>% group_by(hashtags) %>% tally() %>% arrange(desc(n)) %>% ungroup() %>% mutate(rank=row_number()) %>% filter(rank<=10)
+senator_tweets_nort_top10hashtag <- senator_tweets_nort_whashtag %>% filter(hashtags %in% top10tweets$hashtags)
+
+#Aggregating tweets by month
+senator_tweets_nort_top10hashtag_monthyr <- senator_tweets_nort_top10hashtag %>% group_by(Month_Yr, hashtags) %>% summarize(count = length(hashtags)) 
+
+#Creating plot objects
+senator_tweets_nort_top10hashtag_monthyr <- senator_tweets_nort_top10hashtag_monthyr %>% group_by(hashtags) %>% mutate(quart1 = quantile(count, probs = 0.25),quart2 = quantile(count, probs = 0.75))
+maxs <- group_by(senator_tweets_nort_top10hashtag_monthyr, hashtags) %>% slice(which.max(count))
+
+#Plotting sparklines
+ggplot(senator_tweets_nort_top10hashtag_monthyr, aes(Month_Yr, y=count, group=hashtags)) + facet_grid(hashtags ~ ., scales = "free_y") + geom_ribbon(aes(ymin = quart1, max = quart2), fill = 'grey90') + geom_line(aes(color=hashtags),size=0.3) + geom_point(data = maxs, col = 'black') + geom_text(data = maxs, aes(label = count), hjust = 1.4, vjust = 1, family="Garamond", size=3) + xlab('Time') + ylab('Hashtags') + ggtitle('Top 10 Senator Hashtags over Time') + guides(color=FALSE) + theme_tufte() + theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"), strip.text.y = element_text(size = 7), axis.ticks = element_blank(), panel.border = element_rect(color="black", fill=NA)) + scale_color_brewer(palette="Spectral")
+
+```
+
+\newline
+
+#### Part 2b
+
+\newline
+
+I now subset the tweets to only 2017/2018 and visualise how the frequently each party uses the top 10 hashtags during this time period. Again, the frequency of hashtag use is aggregated by month.
+
+\newline
+
+I use an **area plot** as I want to visualise how much a party uses a certain hashtags as compared to other hashtags over the time period. The visualisation first reveals (interestingly) that Democrats tweet most of the top 10 hashtags. There are a few months where Democrats contributed up to 900 tweets with a top 10 hashtag, whereas Republicans only contributed up to 300 tweets with a top 10 hashtag in November 2017. Democrats and Republicans also tweet about different things. In the first half of 2017, the bulk of Democrat's tweets had the hashtag "Trumpcare" or "trumpcare", presumably to attack Trump's healthcare policy. However, the Republicans were notably silent on the matter, apart from some use of the more neutral hashtag "healthcare" in July 2017. Even when the two parties tweet of the same thing, the way they frame their hashtag is very different. In late 2017, the bulk of Republican's tweets had the positive hashtag "TaxReform". The Democrats talked about tax policy too, but the bulk of their tweets instead had the much more negative hashtag "GOPTaxScam".
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Subsetting to recent tweets and tweets with senator information
+senator_tweets_nort_whashtag_recent <- senator_tweets_nort_whashtag[as.Date(senator_tweets_nort_whashtag$Month_Yr) >= as.Date("2017-01-01"), ]
+senator_tweets_nort_whashtag_recent <- senator_tweets_nort_whashtag_recent[!is.na(senator_tweets_nort_whashtag_recent$Party.affiliation), ]
+
+#Identifying top 10 hashtags of all time and filtering tweets with those hashtags
+top10hashtags_recent <- senator_tweets_nort_whashtag_recent %>% group_by(hashtags) %>% tally() %>% arrange(desc(n)) %>% ungroup() %>% mutate(rank=row_number()) %>% filter(rank<=10)
+senator_tweets_nort_top10hashtags_recent <- senator_tweets_nort_whashtag_recent %>% filter(hashtags %in% top10hashtags_recent$hashtags)
+
+#Aggregating tweets by month, but differentiating by party
+senator_tweets_nort_top10hashtags_recent_monthyr <- senator_tweets_nort_top10hashtags_recent %>% group_by(Party.affiliation, Month_Yr, hashtags) %>% summarize(count = length(hashtags)) 
+
+#Identifying months with 0 tweets for each hashtag
+allmonthsallpartiestop10tweets <- merge(unique(senator_tweets_nort_top10hashtags_recent$Month_Yr), top10hashtags_recent[,1])
+names(allmonthsallpartiestop10tweets)[1] <- "Month_Yr"
+allmonthsallpartiestop10tweets <- merge(unique(senator_tweets_nort_top10hashtags_recent$Party.affiliation), allmonthsallpartiestop10tweets )
+names(allmonthsallpartiestop10tweets)[1] <- "Party.affiliation"
+senator_tweets_nort_top10hashtags_recent_monthyr_full <- merge(allmonthsallpartiestop10tweets, senator_tweets_nort_top10hashtags_recent_monthyr, by=c("Party.affiliation", "Month_Yr", "hashtags"), all.x=TRUE) %>% mutate(count = ifelse(is.na(count), 0, count))
+
+#Plotting area graph
+ggplot(senator_tweets_nort_top10hashtags_recent_monthyr_full, aes(Month_Yr, y=count, group=hashtags)) + facet_grid(Party.affiliation ~ ., scales = "free_y") + geom_area(aes(fill=hashtags),size=0.3) + xlab('Time') + ylab('Hashtags') + ggtitle('Top 10 Hashtags by Party in Recent Years') + guides(fill=guide_legend(title="Hashtags")) + theme_tufte() + theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"), axis.ticks = element_blank(), panel.border = element_rect(color="black", fill=NA)) + scale_fill_brewer(palette="Spectral")
+
+```
+
+\newline
+
+#### Part 2c
+
+\newline
+
+I next visualise how senators from different parties frame the issue of gun control legislation. To do this I first create a dictionary of 10 hashtags that are associated with support for gun control legislation and 10 hashtags that are associated with support for gun rights. 
+
+\newline
+
+I visualise how often Republican and Democratic senators use these hashtags with a **pyramid plot**. The visualisation is generally unsurprising. Most Democrats have expressed outrage at recent mass shootings with the hashtags "Enough" and "enough" and favour gun control legislation with the hashtags "GunReformNow", "gunsafety" and "gunsense". Most Republicans emphasise the right of Americans to hold a gun and use hashtags that relate to the second amendment, as well as broader hashtags relating to freedom. 
+
+\newline
+
+I am, however, surprised by the fact that Republicans used the hashtag "guncontrol"/"GunControl"/"Guncontrol" more frequently than Democrats. This might indicate that some Republicans might be leaning towards some sort of minimal controls on guns. However, I also suspect that some of these hashtags are used to express criticism at the concept of gun control rather than to express support. 
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Defining dictionary of hashtags relating to gun control and filtering tweets with such hashtags
+guncontroltweets <- c("neveragain", "guncontrol", "GunControl", "Guncontrol", "GunReformNow", "gunsafety", "gunsense", "commonsense", "enough", "Enough", "2ndamendment", "secondamendment", "SecondAmendment", "2A", "2a", "nra",  "NRA", "Liberty", "Freedom", "freedom")
+senator_tweets_nort_guncontrol <- senator_tweets_nort_whashtag %>% filter(hashtags %in% guncontroltweets)
+
+#Calculating frequency of gun control hashtags used by each party
+senator_tweets_nort_guncontrol_byparty <- senator_tweets_nort_guncontrol  %>% group_by(hashtags, Party.affiliation) %>% summarize(count=length(Party.affiliation))
+senator_tweets_nort_guncontrol_byparty <- senator_tweets_nort_guncontrol_byparty[senator_tweets_nort_guncontrol_byparty$Party.affiliation!="Independent",]
+
+#Ordering of hashtags for plot
+senator_tweets_nort_guncontrol_byparty$hashtags <- factor(senator_tweets_nort_guncontrol_byparty$hashtags, levels = (senator_tweets_nort_guncontrol_byparty %>% group_by(hashtags) %>% summarise(sum=sum(count)) %>% arrange(-sum))$hashtags)
+senator_tweets_nort_guncontrol_byparty <- senator_tweets_nort_guncontrol_byparty[!is.na(senator_tweets_nort_guncontrol_byparty$hashtags), ]
+
+#Plotting pyramid plot
+ggplot(senator_tweets_nort_guncontrol_byparty, aes(x = hashtags, y = ifelse(Party.affiliation == "Democratic Party", count, -count), fill = Party.affiliation)) + geom_bar(stat='identity') + scale_y_continuous(breaks = seq(-100, 100, 20), labels=abs(seq(-100, 100, 20))) + coord_flip() + scale_fill_manual(values=c("royalblue", "firebrick"))  + labs(x="Hashtags", y="Count") + ggtitle('Hashtags on Gun Control By Party') + theme_tufte() +theme(legend.position = c(0.85,0.7), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + guides(fill=guide_legend(title="Party"))
+
+```
+
+\newline
+
+#### Part 2d
+
+\newline
+
+Below I visualise how senators responded to the Parkland shooting on 14 April. I use **comparison word clouds** of the text in tweets from 14 April to 17 April so I can visualise how the response changed over time and how it differed in both parties.
+
+\newline
+
+The first takeaway from the visualisations is that the shootings were not the only thing that senators were tweeting about and, in fact, words relating to the shootings only constitute a small part of the word clouds. By 17 April, whatever buzz there was regarding the shooting died down - there was almost no reference to the shooting by Republicans, whilst "enough" and "shooter" were some of the few words related to shootings used by the Democrats. 
+
+\newline
+
+The next takeaway from the visualisations is that the way the shootings was framed differed by party. Republicans were sympathetic to the victims of the shooting and offered condolences, as evident from popular words such as "prayers" (April 14), "support" (April 14) and "victims" (April 15). However, the heavy use of "amendment" (April 14 and April 15) suggests that Republicans also emphasised the need to protect the second amendment. Democrats were much angrier that the shooting occurred and this can be seen from the popular use of "enough" (April 15 and April 17). Democrats emphasised the nature of the problem with words such as "violence" (April 15 and April 16), "assault" (April 15), "weapons" (April 15). They wanted stronger gun control legislation, as evident from their use of words such as "ban" (April 15), "enforcement" (April 16) and "action" (April 15).
+
+\newline 
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Subsetting tweet data into each of the four days after Parkland shooting
+senator_tweets_nort$Day_Month_Yr <- floor_date(senator_tweets_nort$created_at, "day")
+senator_tweets_nort_parkland_1404 <- subset(senator_tweets_nort, Day_Month_Yr=="2018-02-14")
+senator_tweets_nort_parkland_1504 <- subset(senator_tweets_nort, Day_Month_Yr=="2018-02-15")
+senator_tweets_nort_parkland_1604 <- subset(senator_tweets_nort, Day_Month_Yr=="2018-02-16")
+senator_tweets_nort_parkland_1704 <- subset(senator_tweets_nort, Day_Month_Yr=="2018-02-17")
+
+#Defining clean corpus function
+clean_corpus <- function(corpus){
+     corpus <- tm_map(corpus, content_transformer(removeNumbers))
+     corpus <- tm_map(corpus, content_transformer(removePunctuation))
+     corpus <- tm_map(corpus, content_transformer(tolower))
+     corpus <- tm_map(corpus, content_transformer(removeWords), c(stopwords("en"))) 
+     corpus <- tm_map(corpus, content_transformer(stripWhitespace))
+     return(corpus)}
+
+#Defining corpus stem completion function
+stemCompletion2 <- function(x, dictionary) {
+     x <- unlist(strsplit(as.character(x), " "))
+     x <- x[x != ""]
+     x <- stemCompletion(x, dictionary=dictionary)
+     x <- paste(x, sep="", collapse=" ")
+     PlainTextDocument(stripWhitespace(x))}
+
+#Retrieving tweets from republicans and democrats on 14 April and aggregating into large text chunks per party
+rep_tweets_parkland_1404_uncollapsed <- subset(senator_tweets_nort_parkland_1404, Party.affiliation=="Republican Party")
+dem_tweets_parkland_1404_uncollapsed <- subset(senator_tweets_nort_parkland_1404, Party.affiliation=="Democratic Party")
+rep_tweets_parkland_1404 <- as.vector(glue::collapse(as.character(rep_tweets_parkland_1404_uncollapsed$text), sep = ";;;"))
+dem_tweets_parkland_1404 <- as.vector(glue::collapse(as.character(dem_tweets_parkland_1404_uncollapsed$text), sep = ";;;"))
+collapsedtweets_1404 <- as.data.frame(rbind(rep_tweets_parkland_1404, dem_tweets_parkland_1404))
+collapsedtweets_1404$doc_id <- c("April 14 Republican Tweets", "April 14 Democrat Tweets")
+colnames(collapsedtweets_1404)[1] <- "text"
+
+#Converting large text chuncks to corpus. Cleaning, stemming and completing stems of corpus
+collapsedtweets_1404_source <- DataframeSource(collapsedtweets_1404)
+collapsedtweets_1404_corpus <- VCorpus(collapsedtweets_1404_source)
+collapsedtweets_1404_clean <- clean_corpus(collapsedtweets_1404_corpus)
+collapsedtweets_1404_stemmed <- tm_map(collapsedtweets_1404_clean, stemDocument)
+collapsedtweets_1404_compl <- lapply(collapsedtweets_1404_stemmed, stemCompletion2, dictionary=collapsedtweets_1404_clean)
+collapsedtweets_1404_all <- as.VCorpus(collapsedtweets_1404_compl)
+for (i in 1:dim(collapsedtweets_1404)[1]){collapsedtweets_1404_all[[i]]$meta$id <- collapsedtweets_1404[i,"doc_id"]}
+
+#Creating term-document matrix for word cloud
+collapsedtweets_1404_tdm <- TermDocumentMatrix(collapsedtweets_1404_all)
+collapsedtweets_1404_m <- as.matrix(collapsedtweets_1404_tdm)
+
+#Repeat above steps for 15 April
+rep_tweets_parkland_1504_uncollapsed <- subset(senator_tweets_nort_parkland_1504, Party.affiliation=="Republican Party")
+dem_tweets_parkland_1504_uncollapsed <- subset(senator_tweets_nort_parkland_1504, Party.affiliation=="Democratic Party")
+rep_tweets_parkland_1504 <- as.vector(glue::collapse(as.character(rep_tweets_parkland_1504_uncollapsed$text), sep = ";;;"))
+dem_tweets_parkland_1504 <- as.vector(glue::collapse(as.character(dem_tweets_parkland_1504_uncollapsed$text), sep = ";;;"))
+collapsedtweets_1504 <- as.data.frame(rbind(rep_tweets_parkland_1504, dem_tweets_parkland_1504))
+collapsedtweets_1504$doc_id <- c("April 15 Republican Tweets", "April 15 Democrat Tweets")
+colnames(collapsedtweets_1504)[1] <- "text"
+collapsedtweets_1504_source <- DataframeSource(collapsedtweets_1504)
+collapsedtweets_1504_corpus <- VCorpus(collapsedtweets_1504_source)
+collapsedtweets_1504_clean <- clean_corpus(collapsedtweets_1504_corpus)
+collapsedtweets_1504_stemmed <- tm_map(collapsedtweets_1504_clean, stemDocument)
+collapsedtweets_1504_compl <- lapply(collapsedtweets_1504_stemmed, stemCompletion2, dictionary=collapsedtweets_1504_clean)
+collapsedtweets_1504_all <- as.VCorpus(collapsedtweets_1504_compl)
+for (i in 1:dim(collapsedtweets_1504)[1]){collapsedtweets_1504_all[[i]]$meta$id <- collapsedtweets_1504[i,"doc_id"]}
+collapsedtweets_1504_tdm <- TermDocumentMatrix(collapsedtweets_1504_all)
+collapsedtweets_1504_m <- as.matrix(collapsedtweets_1504_tdm)
+
+#Repeat above steps for 16 April
+rep_tweets_parkland_1604_uncollapsed <- subset(senator_tweets_nort_parkland_1604, Party.affiliation=="Republican Party")
+dem_tweets_parkland_1604_uncollapsed <- subset(senator_tweets_nort_parkland_1604, Party.affiliation=="Democratic Party")
+rep_tweets_parkland_1604 <- as.vector(glue::collapse(as.character(rep_tweets_parkland_1604_uncollapsed$text), sep = ";;;"))
+dem_tweets_parkland_1604 <- as.vector(glue::collapse(as.character(dem_tweets_parkland_1604_uncollapsed$text), sep = ";;;"))
+collapsedtweets_1604 <- as.data.frame(rbind(rep_tweets_parkland_1604, dem_tweets_parkland_1604))
+collapsedtweets_1604$doc_id <- c("April 16 Republican Tweets", "April 16 Democrat Tweets")
+colnames(collapsedtweets_1604)[1] <- "text"
+collapsedtweets_1604_source <- DataframeSource(collapsedtweets_1604)
+collapsedtweets_1604_corpus <- VCorpus(collapsedtweets_1604_source)
+collapsedtweets_1604_clean <- clean_corpus(collapsedtweets_1604_corpus)
+collapsedtweets_1604_stemmed <- tm_map(collapsedtweets_1604_clean, stemDocument)
+collapsedtweets_1604_compl <- lapply(collapsedtweets_1604_stemmed, stemCompletion2, dictionary=collapsedtweets_1604_clean)
+collapsedtweets_1604_all <- as.VCorpus(collapsedtweets_1604_compl)
+for (i in 1:dim(collapsedtweets_1604)[1]){collapsedtweets_1604_all[[i]]$meta$id <- collapsedtweets_1604[i,"doc_id"]}
+collapsedtweets_1604_tdm <- TermDocumentMatrix(collapsedtweets_1604_all)
+collapsedtweets_1604_m <- as.matrix(collapsedtweets_1604_tdm)
+
+#Repeat above steps for 17 April
+rep_tweets_parkland_1704_uncollapsed <- subset(senator_tweets_nort_parkland_1704, Party.affiliation=="Republican Party")
+dem_tweets_parkland_1704_uncollapsed <- subset(senator_tweets_nort_parkland_1704, Party.affiliation=="Democratic Party")
+rep_tweets_parkland_1704 <- as.vector(glue::collapse(as.character(rep_tweets_parkland_1704_uncollapsed$text), sep = ";;;"))
+dem_tweets_parkland_1704 <- as.vector(glue::collapse(as.character(dem_tweets_parkland_1704_uncollapsed$text), sep = ";;;"))
+collapsedtweets_1704 <- as.data.frame(rbind(rep_tweets_parkland_1704, dem_tweets_parkland_1704))
+collapsedtweets_1704$doc_id <- c("April 17 Republican Tweets", "April 17 Democrat Tweets")
+colnames(collapsedtweets_1704)[1] <- "text"
+collapsedtweets_1704_source <- DataframeSource(collapsedtweets_1704)
+collapsedtweets_1704_corpus <- VCorpus(collapsedtweets_1704_source)
+collapsedtweets_1704_clean <- clean_corpus(collapsedtweets_1704_corpus)
+collapsedtweets_1704_stemmed <- tm_map(collapsedtweets_1704_clean, stemDocument)
+collapsedtweets_1704_compl <- lapply(collapsedtweets_1704_stemmed, stemCompletion2, dictionary=collapsedtweets_1704_clean)
+collapsedtweets_1704_all <- as.VCorpus(collapsedtweets_1704_compl)
+for (i in 1:dim(collapsedtweets_1704)[1]){collapsedtweets_1704_all[[i]]$meta$id <- collapsedtweets_1704[i,"doc_id"]}
+collapsedtweets_1704_tdm <- TermDocumentMatrix(collapsedtweets_1704_all)
+collapsedtweets_1704_m <- as.matrix(collapsedtweets_1704_tdm)
+
+#Plotting word clouds
+par(mfrow=c(2,2))
+par(mar=c(0.01,0.01,0.01,0.01))
+set.seed(2103)
+comparison.cloud(collapsedtweets_1404_m, colors = c("firebrick", "royalblue"), scale=c(0.1,1.3), title.size= 1, max.words = 80, family="Garamond")
+set.seed(2103)
+comparison.cloud(collapsedtweets_1504_m, colors = c("firebrick", "royalblue"), scale=c(0.1,1.3), title.size= 1, max.words = 80, family="Garamond")
+set.seed(2103)
+comparison.cloud(collapsedtweets_1604_m, colors = c("firebrick", "royalblue"), scale=c(0.1,1.3), title.size= 1, max.words = 80, family="Garamond")
+set.seed(2103)
+comparison.cloud(collapsedtweets_1704_m, colors = c("firebrick", "royalblue"), scale=c(0.1,1.3), title.size= 1, max.words = 80, family="Garamond")
+
+```
+
+\newline
+
+#### Part 3a
+
+\newline
+
+I next use a **scatterplot** to visualise how senator retweets differ by party. As expected, most senators retweet along party lines. Most Democrats (coloured blue) retweeted a high number of their fellow Democrat tweets, whereas most Republicans (coloured red) retweeted a high number of their fellow Republican tweets. The most balanced retweeter is probably Chris Coons who has retweeted almost an even number of Democrat and Republican tweets. The two Independent candidates are interesting - whilst Angus King mostly retweeted Republican tweets, Bernie Sanders mostly retweeted Democrat tweets. 
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Subsetting to retweets and determining the origin of the retweet (manual function is used rather than "mentions screen name" after student identified in Piazza that "mentions screen name" is not accurate)
+senator_tweets_rt <- senator_tweets %>% filter(is_retweet=="TRUE")
+senator_tweets_rt <- senator_tweets_rt %>% mutate(extracted = str_match(text, "(RT|via)((?:[[:blank:]:]\\W*@\\w+)+)")[,3]) 
+senator_tweets_rt$extracted <- str_split_fixed(senator_tweets_rt$extracted, ":.",2)[,1]
+senator_tweets_rt$extracted <- gsub("@", "", senator_tweets_rt$extracted)
+senator_tweets_rt$extracted <- gsub(" ", "", senator_tweets_rt$extracted)
+
+#Adding in party information of person who retweeted and the originator of the retweet
+senator_tweets_rt_partyinfo <- merge(senator_tweets_rt, senators[,c(3,6)], by.x="screen_name", by.y="Official.Twitter")
+colnames(senator_tweets_rt_partyinfo)[colnames(senator_tweets_rt_partyinfo)=="Party.affiliation"] <- "SourceParty"
+senator_tweets_rt_partyinfo <- merge(senator_tweets_rt_partyinfo, senators[,c(3,6)], by.x="extracted", by.y="Official.Twitter")
+colnames(senator_tweets_rt_partyinfo)[colnames(senator_tweets_rt_partyinfo)=="Party.affiliation"] <- "RTParty"
+
+#Aggregating tweets by senator and calculating number of Republican and Democrat retweet for each senator
+senator_tweets_rt_bysenator <- senator_tweets_rt_partyinfo %>% group_by(screen_name) %>% mutate(RepublicanRetweet = length(RTParty[RTParty=="Republican Party"])) %>% mutate(DemocraticRetweet = length(RTParty[RTParty=="Democratic Party"]))
+senator_tweets_rt_bysenator <- senator_tweets_rt_bysenator[,c("screen_name", "SourceParty", "RepublicanRetweet", "DemocraticRetweet")]
+senator_tweets_rt_bysenator <- senator_tweets_rt_bysenator[!duplicated(senator_tweets_rt_bysenator),]
+
+#Plotting scatterplot
+ggplot(senator_tweets_rt_bysenator, aes(x = DemocraticRetweet, y = RepublicanRetweet, label = screen_name)) + geom_point(aes(color=SourceParty), alpha = 0.5) + scale_size(range = c(1, 10)) + geom_text(aes(label=screen_name), size=2.5, family="Garamond", check_overlap=TRUE, hjust=-0.1, vjust=-0.2) + scale_color_manual(values = c("royalblue", "seagreen", "firebrick")) + xlab('Democratic Party Retweets') + ylab('Republican Party Retweets') + guides(color=guide_legend(title="Senator Party")) + ggtitle("Retweets of Senators by Party") + theme_tufte() +theme(legend.position = c(0.8,0.8), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+```
+
+\newline
+
+#### Part 3b
+
+\newline
+
+Again focusing on non-retweeted tweets, I then visualise a network based on the number of mentions between senators. In this network, each edge represents at least one mention from one senator to another in either direction (the network object is undirected). The size of the edge is weighted by the number of mentions. The vertices are sized according to each senator's in-degree centrality and coloured according to the political party they belong to. 
+
+\newline
+
+The network visualisation is frankly difficult to interpret because it is very dense at the centre, with many edges of very high weights since senators often mention each other. One interesting takeaway from the visualisation is that there is less clustering in twitter mentions. There are some Republicans, such as Rand Paul and Lisa Murkowski, who mentions/is mentioned by many Democrats. The reverse can be said for some Democrats such as Joe Donelly.
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Unnesting mentions and subsetting tweets to only include mentions of senators by senators
+senator_tweets_nort_wmentions <- unnest(senator_tweets_nort, mentions_screen_name, .drop=FALSE)
+senator_tweets_nort_wmentions <- senator_tweets_nort_wmentions[!is.na(senator_tweets_nort_wmentions$mentions_screen_name),]
+senator_tweets_nort_wmentions <- senator_tweets_nort_wmentions  %>% filter(screen_name %in% senators$Official.Twitter)
+senator_tweets_nort_wmentions <- senator_tweets_nort_wmentions  %>% filter(mentions_screen_name %in% senators$Official.Twitter)
+
+#Creating an edgelist from mentions
+senator_mentions_edgelist <- senator_tweets_nort_wmentions[,c("screen_name", "mentions_screen_name")]
+
+#Creating network object (undirected with weight)
+mentions_matrix <- igraph::get.adjacency(graph.data.frame(senator_mentions_edgelist), sparse=FALSE)
+mentions_network <- igraph::graph.adjacency(as.matrix(mentions_matrix),mode="undirected",weighted=TRUE, diag = F) 
+
+#Adding attributes to network object - in-degree, out-degree, party affiliation
+V(mentions_network)$Indegree <- igraph::degree(mentions_network, mode="in")
+V(mentions_network)$Outdegree <- igraph::degree(mentions_network, mode="out")
+V(mentions_network)$Party=as.character(senators$Party.affiliation[match(V(mentions_network)$name,senators$Official.Twitter)])
+
+#Plotting network
+set.seed(2105)
+mentions_network_df <- ggnetwork(mentions_network, layout = "kamadakawai", cell.jitter = 0.75)
+mentions_network_df <- mentions_network_df[!is.na(mentions_network_df$weight),]
+ggplot(mentions_network_df, aes(x, y, xend = xend, yend = yend)) + geom_edges(alpha = 0.03, size=log(mentions_network_df$weight), arrow = arrow(length = unit(0.3, "lines"), type = "closed")) + geom_nodes(aes(color=Party, size=Indegree), alpha=0.3) + geom_nodelabel_repel(aes(label = vertex.names), label.padding=0.05, size = 2.5, family="Garamond") + ggtitle('Mentions Network of Senators')  + labs(caption="Size of Nodes: Indegree Centrality \n Size of Edges: Number of Mentions between Senators") +  theme_tufte() + theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5, face='bold', size=14), plot.caption = element_text(hjust = 0.5), text=element_text(family="Garamond"), axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()) + scale_colour_manual(values = c("royalblue", "seagreen", "firebrick"))  + guides(size=FALSE) 
+
+```
+
+
+\newline
+
+#### Part 3c
+
+\newline
+
+Below I re-create the previous visualisation. However, this time, the nodes are sized according to the senator's overall followers (information retrieved from Twitter server), whilst the senator labels are sized according to the senator's in-degree centrality in the network. 
+
+\newline
+
+The aim of this visualisation is to compare the senator's overall popularity (determined by followers) with the senator's centrality in the senator network. Interestingly, the most popular senators are not always the most central. Bob Corker, for instance, is rather popular, as evident from the large node size, but has very few mention of/from other senators. By contrast, Ted Cruz and Diane Feinstein both have few followers, as evident from their small node sizes, but are quite central to the network.  
+
+\newline
+
+```{r, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Retrieving information on senator's total followers and creating new file
+#twitter_token <- create_token(consumer_key = getOption("twitter_api_key"),consumer_secret = getOption("twitter_api_secret"))
+#senators_twitterinfo <- lookup_users(senators$Official.Twitter)
+#senators_wfollowers <- merge(senators, senators_twitterinfo[,c("screen_name", "followers_count")], by.x="Official.Twitter", by.y="screen_name")
+#write.csv(senators_wfollowers, "senators_wfollowers.csv", row.names = FALSE)
+
+#Loading file on senators total followers
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+senators_wfollowers <- read.csv('senators_wfollowers.csv')
+
+#Adding attributes to network object - total followers
+V(mentions_network)$Followers=as.character(senators_wfollowers$followers_count[match(V(mentions_network)$name,senators_wfollowers$Official.Twitter)])
+
+#Plotting network
+set.seed(2105)
+mentions_network_df <- ggnetwork(mentions_network, layout = "kamadakawai", cell.jitter = 0.75)
+mentions_network_df <- mentions_network_df[!is.na(mentions_network_df$weight),]
+mentions_network_df$Followers <- as.numeric(mentions_network_df$Followers)
+ggplot(mentions_network_df, aes(x, y, xend = xend, yend = yend)) + geom_edges(alpha = 0.03, size=log(mentions_network_df$weight), arrow = arrow(length = unit(0.3, "lines"), type = "closed")) + geom_nodes(aes(color=Party, size=log(Followers)), alpha=0.3) + geom_nodelabel_repel(aes(label = vertex.names, size=sqrt(Indegree/50)), label.padding=0.05, family="Garamond") + labs(caption="Size of Nodes: No of Followers \n Size of Labels: Indegree Centrality \n Size of Edges: Number of Mentions between Senators") + ggtitle('Mentions Network of Senators') + theme_tufte() + theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5, face='bold', size=14), plot.caption = element_text(hjust = 0.5), text=element_text(family="Garamond"), axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()) + scale_colour_manual(values = c("royalblue", "seagreen", "firebrick")) + guides(size=FALSE) 
+  
+```
+

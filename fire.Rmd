@@ -1,0 +1,248 @@
+---
+title: "Data Visualisations of Fire Incidents in NYC"
+output: html_document
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r 2.1, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+library(ggmap)
+library(leaflet)
+library(tidyr)
+library(stringr)
+library(lubridate)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggthemes)
+library(sp)
+library(rgdal)
+library(rgeos)
+library(extrafont)
+loadfonts()
+
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+fire <- read.csv('severe_incidents.csv')
+stations <- read.csv('FDNY_Firehouse_Listing.csv')
+```
+
+\newline
+
+#### Setup
+
+\newline
+
+For this exercise, I chose to use the pre-subsetted data of fire incidents of the most severe incidents for 2015. The file was marginally altered by 
+
+\newline
+
+1. removing incidents without geographical coordinates
+2. removing incidents that are not in New York's borough
+3. removing incidents with faulty geographical coding in rows 849, 972 and 2295 (coordinates are completely off from New York)
+
+\newline
+
+```{r 2.2, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Remove rows 849 (lat=42.98, lon=-78.65), 972 (lat= 40.45, lon=-74.81) and 229 (lat=40.70, lon=-73.34)
+fire <- fire[-c(849, 972, 2295), ]
+
+#Remove rows with no geographical coordinates
+fire <- fire[!is.na(fire$Latitude),]
+stations <- stations[!is.na(stations$Latitude),]
+
+#Remove rows that are not in NYC
+fire <- fire[!is.na(fire$BOROUGH_DESC),]
+
+#Recoding various attributes of fire incidents to appear neater
+fire$duration_formatted <- seconds_to_period(fire$TOTAL_INCIDENT_DURATION)
+fire$fire_type <- str_split_fixed(fire$INCIDENT_TYPE_DESC, n=2, " - ")[,2]
+fire$fire_date <- str_split_fixed(fire$INCIDENT_DATE_TIME, n=2, " ")[,1]
+```
+
+\newline
+
+#### Part 1
+
+\newline
+
+I first create an interactive map of the severe fires and provide popup information on the (1) location of fire, (2) date of fire, (3) type of fire, (4) duration of fire and (5) units on scene. The map reveals that most incidents cluster around Manhattan, the Bronx and Brooklyn, which is unsurprising considering that these are the most densely populated areas. 
+
+\newline
+
+```{r 2.3, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+#Create base map
+basemap <- leaflet(fire, width ="100%")%>% 
+  addProviderTiles("Stamen.Terrain", options = providerTileOptions(minZoom=10, maxZoom=18)) %>%   
+  setView(-73.9949344, 40.7179112, zoom = 10)
+
+#Create map
+map_1 <- basemap %>%
+  addCircles(lng = ~Longitude, lat = ~Latitude, color="firebrick",  popup = paste("Location:",fire$STREET_HIGHWAY,"<br/>","Date:", fire$fire_date,"<br/>", "Fire Type:", fire$fire_type ,"<br/>", "Duration of Fire:", fire$duration_formatted,  "<br/>", "Units on Scene:",  fire$UNITS_ONSCENE))
+map_1
+```
+
+\newline
+
+#### Part 2a
+
+\newline
+
+I next classify the fires by property types. There are dozens of property types represented in the datafile. For simplicity, I collapse the categories into the 5 most common property types, namely: Multifamily Dwelling, 1 or 2 Family Dwelling, Businesses, Restaurants and Grocery Stores, Other Property Types. 
+
+\newline
+
+From the map, we find that the property type most affected by fires are Multifamily Dwellings and 1 or 2 Family Dwellings. There are more incidents involving Multifamily Dwellings in Manhattan and the Bronx, whereas there are more incidents involving 1 or 2 Family Dwellings in Staten Island and the Queens.
+
+\newline
+
+```{r 2.4, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Create property categories
+fire$property_code <- str_split_fixed(fire$PROPERTY_USE_DESC, n=2, " - ")[,1]
+fire$property_simple <- ifelse(fire$property_code==429, "Multifamily Dwelling", ifelse(fire$property_code==419, "1 or 2 Family Dwelling", ifelse(fire$property_code==500|fire$property_code==599, "Businesses", ifelse(fire$property_code==161|fire$property_code==519, "Restaurants or Grocery Stores", "Other Property Type"))))
+
+#Assign colour to property categories
+pal = colorFactor("Dark2", domain = fire$property_simple) 
+color_property = pal(fire$property_simple)
+
+#Create map
+map_2 <- basemap %>%
+  addCircles(lng = ~Longitude, lat = ~Latitude, color=color_property,  popup = paste("Location:",fire$STREET_HIGHWAY,"<br/>","Date:", fire$fire_date,"<br/>", "Fire Type:", fire$fire_type ,"<br/>", "Duration of Fire:", fire$duration_formatted, "<br/>", "Units on Scene:",  fire$UNITS_ONSCENE, "<br/>", "Property Type:",  fire$property_simple))  %>%
+  addLegend(pal = pal, values = ~fire$property_simple, title = "Property Type", position = "bottomright")
+map_2
+```
+
+\newline
+
+#### Part 2b
+
+\newline
+
+I next add clustering to my previous map and as expected, the largest cluster is in Manhattan.
+
+\newline
+
+```{r 2.5, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+map_3 <- basemap %>%
+  addCircleMarkers(lng = ~Longitude, lat = ~Latitude, color=color_property,  
+                   popup = paste("Location:",fire$STREET_HIGHWAY,"<br/>","Date:", fire$fire_date,"<br/>", "Fire Type:", fire$fire_type ,"<br/>", "Duration of Fire:", fire$duration_formatted, "<br/>", "Units on Scene:",  fire$UNITS_ONSCENE, "<br/>", "Property Type:",  fire$property_simple),
+                   clusterOptions = markerClusterOptions()) %>% addLegend(pal = pal, values = ~fire$property_simple, title = "Property Type", position = "bottomright")
+map_3
+```
+
+\newline
+
+#### Part 3
+
+\newline
+
+I next create a map with two layers. The first layer reveals the locations of the firehouses around New York City and the second layer reveals the severe fire incidents as in the previous map. In my second layer of fire incidents, I adjust the size of the circles representing the incidents by the total incident duration measured in seconds (scaled), with incidents that last longer represented by larger circles. The layers can be toggled by the top right button. 
+
+\newline
+
+This second layer reveals that the fire that lasted the longest (by far) occurred in Queens, however there is no other discernible pattern between the duration of fires and its location or its property type. 
+
+\newline
+
+```{r 2.6, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+map_4 <- basemap %>%
+  addCircleMarkers(group="Incidents", lng = ~Longitude, lat = ~Latitude, color=color_property, radius=~sqrt(TOTAL_INCIDENT_DURATION/1000), weight=1, popup = paste("Location:",fire$STREET_HIGHWAY,"<br/>","Date:", fire$fire_date,"<br/>", "Fire Type:", fire$fire_type ,"<br/>", "Duration of Fire:", fire$duration_formatted, "<br/>", "Units on Scene:",  fire$UNITS_ONSCENE, "<br/>", "Property Type:",  fire$property_simple))  %>%
+  addLegend(pal = pal, values = ~fire$property_simple, title = "Property Type", position = "bottomleft", group = "Incidents") %>%
+  addCircles(group="Firehouses", data=stations, lng = ~Longitude, lat = ~Latitude, color="darkblue", opacity = 1, fillOpacity = 1, label = paste("Location of Firehouse:",stations$FacilityAddress)) %>%
+   addLegend(color="darkblue", labels = "Firehouses", position = "bottomright", group = "Firehouses") %>%
+    addLayersControl(
+overlayGroups = c("Incidents","Firehouses"),
+options = layersControlOptions(collapsed = TRUE))
+map_4
+```
+
+\newline
+
+#### Part 4a
+
+\newline
+
+I next create scatter plot showing the time it takes for the first fire team to arrive at an incident (measures in seconds) as a function of the closest distance of the incident from the nearest firehouse (calculated "as the crow flies" in meters). As expected, the further the incident from a firehouse, the longer it takes for a fire team to arrive. I further classify each incident by the Borough in which they occur, however I can find no discernible pattern between response time and the location of the incident from the scatter plot.
+
+\newline
+
+```{r 2.7, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+
+#Calculating response time of fire teams
+fire$incident_start <- mdy_hms(fire$INCIDENT_DATE_TIME)
+fire$response_start <- mdy_hms(fire$ARRIVAL_DATE_TIME)
+fire$response_time_secs <- as.numeric(as.duration(interval(fire$incident_start, fire$response_start)))
+
+#Creating spatial file
+fire_spatial <- fire
+stations_spatial <- stations
+coordinates(fire_spatial) <- c("Longitude", "Latitude")
+proj4string(fire_spatial) <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+coordinates(stations_spatial) <- c("Longitude", "Latitude")
+proj4string(stations_spatial) <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+
+#Converting projections of spatial files to calculate distance in metres
+fireproj<-spTransform(fire_spatial, CRS("+proj=utm +zone=18 +ellps=GRS80 +datum=NAD83 +units=m +no_defs +towgs84=0,0,0"))
+stationsproj<-spTransform(stations_spatial, CRS("+proj=utm +zone=18 +ellps=GRS80 +datum=NAD83 +units=m +no_defs +towgs84=0,0,0"))
+
+#Calculating distance between incident and all firestations
+distance <- gDistance(fireproj, stationsproj, byid=TRUE, hausdorff = FALSE)
+
+#Finding distance between incident and CLOSEST firestation
+minstationdist<-apply(distance, 2, min)
+fire$neareststationdist<-minstationdist
+fire$neareststationid<-as.vector(apply(distance, 2, function(x) which(x==min(x))))
+
+#Creating scatter plot
+scatterplot <- ggplot(fire, aes(x = neareststationdist, y = response_time_secs)) + geom_point(aes(color=BOROUGH_DESC), alpha = 0.5) + geom_smooth(method='lm', formula=y~x) + scale_fill_brewer(palette="Set1") + xlab('Nearest Station Distance (m)') + ylab('Response Time (secs)') + guides(color=guide_legend(title="Borough")) + ggtitle("Fire Response Time by Distance to Station") + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+
+scatterplot
+```
+
+\newline
+
+#### Part 4b
+
+\newline
+
+I next visualise the response times of fire teams on an interactive map. To do so, I classify the incidents five quantiles (equally distributed categories) based on response time. There are therefore five categories: Very Slow, Slow, Average, Fast, Very Fast. I find that there is in fact a geographic distribution to how fast fire teams react to incidents, with the fastest response times in Brooklyn and Manhattan, and the slowest response times in the Bronx. 
+
+\newline
+
+```{r 2.8, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+fire$responsequantile <- with(fire, factor(findInterval(response_time_secs, c(-Inf, quantile(response_time_secs, probs=c(0.2, 0.4, 0.6, 0.8)), Inf)), labels=c("Very Fast","Fast","Average","Slow","Very Slow")))
+fire$responsequantile <- ordered(fire$responsequantile, levels = c("Very Slow","Slow","Average","Fast","Very Fast"))
+
+pal2 = colorFactor("RdYlGn", domain = fire$responsequantile) 
+color_response = pal2(fire$responsequantile)
+
+map_5 <- basemap %>%
+  addCircles(group="Incidents", lng = ~Longitude, lat = ~Latitude, color=color_response, popup = paste("Location:",fire$STREET_HIGHWAY,"<br/>","Date:", fire$fire_date,"<br/>", "Fire Type:", fire$fire_type ,"<br/>", "Duration of Fire:", fire$duration_formatted, "<br/>", "Units on Scene:",  fire$UNITS_ONSCENE, "<br/>", "Property Type:",  fire$property_simple, "<br/>", "Response Time (secs):",  fire$response_time_secs))  %>%
+  addLegend(pal = pal2, values = ~fire$responsequantile, title = "Response Time", position = "bottomleft", group = "Incidents") %>%
+  addCircles(group="Firehouses", data=stations, lng = ~Longitude, lat = ~Latitude, color="darkblue", opacity = 1, fillOpacity = 1, label = paste("Location of Firehouse:",stations$FacilityAddress)) %>%
+   addLegend(color="darkblue", labels = "Firehouses", position = "bottomright", group = "Firehouses") %>%
+  addLayersControl(
+overlayGroups = c("Incidents","Firehouses"),
+options = layersControlOptions(collapsed = TRUE))
+map_5
+```
+
+\newline
+
+To further visualise the response times of fire teams, I create a faceted static map revealing the density distribution of fire incidents by response time. As expected, the density distribution of incidents with very fast response times clusters in Brooklyn, whereas the density distribution of incidents with very slow response times clusters in the Bronx.
+
+\newline
+
+```{r 2.9, dpi=300, fig.align='center',warning=FALSE,message=FALSE,error=FALSE}
+rawmap <- get_map(location = c(lon = -73.9949344, lat = 40.7179112), zoom=10, maptype="toner-lite")
+ggmap(rawmap) + stat_density2d(data = fire, geom = "polygon",
+  aes(x = Longitude, y = Latitude, fill=..level..,alpha=..level..)) + 
+  scale_fill_gradient(low = "yellow", high = "red") + facet_wrap(~ responsequantile, ncol = 3) + guides(alpha=FALSE) + guides(fill=guide_legend(title="Number of Incidents")) + ggtitle("Density Map of Incidents by Response Time") +theme(axis.ticks=element_blank(), axis.text =element_blank(), axis.title =element_blank(), legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+```

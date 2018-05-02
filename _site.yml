@@ -1,5 +1,16 @@
-name: "Terrorism Visualisations"
+name: "Data Visualisations for QMSS course"
 output_dir: "."
+navbar:
+  title: "Data Visualisations"
+  left:
+    - text: "Winter Olympics"
+      href: olympics.html
+    - text: "Fires in NYC"
+      href: fire.html
+    - text: "Kickstarter Projects"
+      href: kickstarter.html
+    - text: "Senator Networks"
+      href: senate.html
 output:
   html_document:
-    theme: paper
+    theme: sandstone

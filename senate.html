@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+
+
+<title>Data Visualisations of Twitter in the Senate</title>
+
+<script src="site_libs/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/sandstone.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+<style type="text/css">
+/* padding for bootstrap navbar */
+body {
+  padding-top: 61px;
+  padding-bottom: 40px;
+}
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h1 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+
+.section h2 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+.section h3 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+.section h4 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+.section h5 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+.section h6 {
+  padding-top: 66px;
+  margin-top: -66px;
+}
+</style>
+
+<script>
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.parent().addClass('active');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+});
+</script>
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Data Visualisations</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="olympics.html">Winter Olympics</a>
+</li>
+<li>
+  <a href="fire.html">Fires in NYC</a>
+</li>
+<li>
+  <a href="kickstarter.html">Kickstarter Projects</a>
+</li>
+<li>
+  <a href="senate.html">Senator Networks</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div class="fluid-row" id="header">
+
+
+
+<h1 class="title toc-ignore">Data Visualisations of Twitter in the Senate</h1>
+
+</div>
+
+
+<style>
+body {
+text-align: justify}
+</style>
+<p></p>
+<div id="setup" class="section level4">
+<h4>Setup</h4>
+<p></p>
+<p>For this exercise, I realised that there are some senators in the “senators_follow.csv” file that are not in the corresponding “senators_twitter.csv” file, presumably because the files were compiled at different times. I therefore subsetted both files to only include senators that have a match on both files, resulting in 95 senators for analysis.</p>
+<p></p>
+</div>
+<div id="part-1a" class="section level4">
+<h4>Part 1a</h4>
+<p></p>
+<p>Below is a network visualisation of senators, where each vertex represents a senator and each edge represents a directed follow from one senator to another. The vertices are sized according to each senator’s in-degree centrality (how many senators follow them) and coloured according to the political party they belong to. The senators with the top 3 in-degree (Jeff Merkley, Mike Crapo, Mark Warner) and out-degree centrality (John McCain, Lisa Murkowski, Susan Collins) have also been marked out.</p>
+<p></p>
+<p>Because there are so many senators and most senators follow most other senators, the visualisation is extremely dense at the centre. Senators Claire McCaskill, Bill Nelson, Joni Ernst and (surprisingly) Marco Rubio seem to be least connected to the other senators with the lowest in-degree centralities (as evident from their small node sizes). Senator John McCain is interesting in that even though he follows many senators and has a very high out-degree centrality, his below-average in-degree centrality suggests that not as many senators follow him back. As expected, the network clusters along party lines, with most Democratic senators following other Democratic senators and most Republican senators following other Republican senators.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-2-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-1b" class="section level4">
+<h4>Part 1b</h4>
+<p></p>
+<p>I next compare the results of automated mechanisms of cluster identification to the actual party identification of senators through the network visualisation below. The colour of the node represents the senator’s actual party and the colour of the label represents the estimate from the automated mechanism.</p>
+<p></p>
+<p>I am amazed by the results. The automated mechanism successfully estimated the parties of all Democratic and Republican senators, based on their patterns of twitter follows alone. The mechanism did not manage to classify the two Independent senators correctly and estimated them to be Democratic. This is not entirely surprising considering that they mostly follow/are followed by Democratic senators.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-3-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-2a" class="section level4">
+<h4>Part 2a</h4>
+<p></p>
+<p>Below I visualise the time trend of the the senators’ top 10 hashtags in their tweets (not including retweets) since 2009. In order to create the plot, I aggregated the frequency of hashtag use by month.</p>
+<p></p>
+<p>I use a <strong>sparkline graph</strong> as I want to emphasise the time periods when each hashtag was most popular. We find that “Obamacare”&quot; has consistently been one of the most popular hashtags, with peak use at the end of 2013 and throughout 2016. “mepolitics” has also been consistently popular since 2013, whilst “senate”, “SCOTUS” and “WV” has been consistently popular since 2016. There are also some “one-time-hit” hashtags which are popular for a while, but are then almost never used again. These include “Trumpcare”, which was very popular in early 2017, and “TaxReform”, which was similarly popular in late 2017. In fact these hashtags had the highest and second highest frequency of hashtag use in any single month.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-4-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-2b" class="section level4">
+<h4>Part 2b</h4>
+<p></p>
+<p>I now subset the tweets to only 2017/2018 and visualise how the frequently each party uses the top 10 hashtags during this time period. Again, the frequency of hashtag use is aggregated by month.</p>
+<p></p>
+<p>I use an <strong>area plot</strong> as I want to visualise how much a party uses a certain hashtags as compared to other hashtags over the time period. The visualisation first reveals (interestingly) that Democrats tweet most of the top 10 hashtags. There are a few months where Democrats contributed up to 900 tweets with a top 10 hashtag, whereas Republicans only contributed up to 300 tweets with a top 10 hashtag in November 2017. Democrats and Republicans also tweet about different things. In the first half of 2017, the bulk of Democrat’s tweets had the hashtag “Trumpcare” or “trumpcare”, presumably to attack Trump’s healthcare policy. However, the Republicans were notably silent on the matter, apart from some use of the more neutral hashtag “healthcare” in July 2017. Even when the two parties tweet of the same thing, the way they frame their hashtag is very different. In late 2017, the bulk of Republican’s tweets had the positive hashtag “TaxReform”. The Democrats talked about tax policy too, but the bulk of their tweets instead had the much more negative hashtag “GOPTaxScam”.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-5-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-2c" class="section level4">
+<h4>Part 2c</h4>
+<p></p>
+<p>I next visualise how senators from different parties frame the issue of gun control legislation. To do this I first create a dictionary of 10 hashtags that are associated with support for gun control legislation and 10 hashtags that are associated with support for gun rights.</p>
+<p></p>
+<p>I visualise how often Republican and Democratic senators use these hashtags with a <strong>pyramid plot</strong>. The visualisation is generally unsurprising. Most Democrats have expressed outrage at recent mass shootings with the hashtags “Enough” and “enough” and favour gun control legislation with the hashtags “GunReformNow”, “gunsafety” and “gunsense”. Most Republicans emphasise the right of Americans to hold a gun and use hashtags that relate to the second amendment, as well as broader hashtags relating to freedom.</p>
+<p></p>
+<p>I am, however, surprised by the fact that Republicans used the hashtag “guncontrol”/“GunControl”/“Guncontrol” more frequently than Democrats. This might indicate that some Republicans might be leaning towards some sort of minimal controls on guns. However, I also suspect that some of these hashtags are used to express criticism at the concept of gun control rather than to express support.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-6-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-2d" class="section level4">
+<h4>Part 2d</h4>
+<p></p>
+<p>Below I visualise how senators responded to the Parkland shooting on 14 April. I use <strong>comparison word clouds</strong> of the text in tweets from 14 April to 17 April so I can visualise how the response changed over time and how it differed in both parties.</p>
+<p></p>
+<p>The first takeaway from the visualisations is that the shootings were not the only thing that senators were tweeting about and, in fact, words relating to the shootings only constitute a small part of the word clouds. By 17 April, whatever buzz there was regarding the shooting died down - there was almost no reference to the shooting by Republicans, whilst “enough” and “shooter” were some of the few words related to shootings used by the Democrats.</p>
+<p></p>
+<p>The next takeaway from the visualisations is that the way the shootings was framed differed by party. Republicans were sympathetic to the victims of the shooting and offered condolences, as evident from popular words such as “prayers” (April 14), “support” (April 14) and “victims” (April 15). However, the heavy use of “amendment” (April 14 and April 15) suggests that Republicans also emphasised the need to protect the second amendment. Democrats were much angrier that the shooting occurred and this can be seen from the popular use of “enough” (April 15 and April 17). Democrats emphasised the nature of the problem with words such as “violence” (April 15 and April 16), “assault” (April 15), “weapons” (April 15). They wanted stronger gun control legislation, as evident from their use of words such as “ban” (April 15), “enforcement” (April 16) and “action” (April 15).</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-7-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-3a" class="section level4">
+<h4>Part 3a</h4>
+<p></p>
+<p>I next use a <strong>scatterplot</strong> to visualise how senator retweets differ by party. As expected, most senators retweet along party lines. Most Democrats (coloured blue) retweeted a high number of their fellow Democrat tweets, whereas most Republicans (coloured red) retweeted a high number of their fellow Republican tweets. The most balanced retweeter is probably Chris Coons who has retweeted almost an even number of Democrat and Republican tweets. The two Independent candidates are interesting - whilst Angus King mostly retweeted Republican tweets, Bernie Sanders mostly retweeted Democrat tweets.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-8-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-3b" class="section level4">
+<h4>Part 3b</h4>
+<p></p>
+<p>Again focusing on non-retweeted tweets, I then visualise a network based on the number of mentions between senators. In this network, each edge represents at least one mention from one senator to another in either direction (the network object is undirected). The size of the edge is weighted by the number of mentions. The vertices are sized according to each senator’s in-degree centrality and coloured according to the political party they belong to.</p>
+<p></p>
+<p>The network visualisation is frankly difficult to interpret because it is very dense at the centre, with many edges of very high weights since senators often mention each other. One interesting takeaway from the visualisation is that there is less clustering in twitter mentions. There are some Republicans, such as Rand Paul and Lisa Murkowski, who mentions/is mentioned by many Democrats. The reverse can be said for some Democrats such as Joe Donelly.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-9-1.png" width="2100" style="display: block; margin: auto;" /></p>
+<p></p>
+</div>
+<div id="part-3c" class="section level4">
+<h4>Part 3c</h4>
+<p></p>
+<p>Below I re-create the previous visualisation. However, this time, the nodes are sized according to the senator’s overall followers (information retrieved from Twitter server), whilst the senator labels are sized according to the senator’s in-degree centrality in the network.</p>
+<p></p>
+<p>The aim of this visualisation is to compare the senator’s overall popularity (determined by followers) with the senator’s centrality in the senator network. Interestingly, the most popular senators are not always the most central. Bob Corker, for instance, is rather popular, as evident from the large node size, but has very few mention of/from other senators. By contrast, Ted Cruz and Diane Feinstein both have few followers, as evident from their small node sizes, but are quite central to the network.</p>
+<p></p>
+<p><img src="senate_files/figure-html/unnamed-chunk-10-1.png" width="2100" style="display: block; margin: auto;" /></p>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

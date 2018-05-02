@@ -1,0 +1,398 @@
+---
+title: "Data Visualisations of Winter Olympics"
+output: html_document
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+require(ggplot2)
+require(ggthemes)
+require(magrittr)
+require(dplyr)
+require(tidyr)
+require(RColorBrewer)
+require(extrafont)
+require(ggrepel)
+require(ggpubr)
+require(rvest)
+require(stringr)
+require(grid)
+require(gridExtra)
+require(plotly)
+require(DT)
+require(shiny)
+loadfonts()
+
+setwd("~/Documents/GitHub/yloong-fong.github.io")
+winter <- read.csv('winter.csv')
+countrystats <- read.csv('dictionary.csv')
+
+```
+
+#### Setup
+
+I first provide some brief explanations of the data wrangling that was done on the dataset:
+
+1. Consistent with medal tables elsewhere and in order to ensure all countries are represented throughout time, I recode the defunct countries as follows:
+    + URS (The Soviet Union) and EUN (Joint team including Russia and former Soviet Union Satellites) were recoded to RUS (Russia)
+    + GDR (East Germany), FRG (West Germany) and EUA (Joint German Team) were recoded to GER (Germany)
+    + TCH (Czechoslovakia) was recoded to CZE (Czech Republic) 
+    + YUG (Yugoslavia) was recoded to SCG (Serbia)
+    + ROU (Romania) was recoded to ROM (Romania)
+
+2. To ensure medals in team sports were only counted once, I only counted "unique" medals in the medal tally. To count, the medal must be unique in year, discipline, event, medal type and gender.
+
+3. To ensure smoothness of my time-series graphs, I needed to remove breaks in the data for any countries in any years. Hence, in years where no medals were recorded, I recoded that as meaning there were 0 medals.
+
+```{r 1.1, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+#Dealing with Defunct Countries
+winter$CountryRename <- ifelse(winter$Country=='URS', 'RUS', as.character(winter$Country))
+winter$CountryRename <- ifelse(winter$Country=='EUN', 'RUS', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='GDR', 'GER', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='FRG', 'GER', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='EUA', 'GER', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='TCH', 'CZE', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='YUG', 'SCG', winter$CountryRename)
+winter$CountryRename <- ifelse(winter$Country=='ROU', 'ROM', winter$CountryRename)
+
+#Determining Host Country (For later question) 
+wiki_hosts <- read_html("https://en.wikipedia.org/wiki/Winter_Olympic_Games")
+hosts <- html_table(html_nodes(wiki_hosts, "table")[[5]], fill=TRUE)
+hosts <- hosts[-1,1:3]
+hosts$City <- str_split_fixed(hosts$Host, n=2, ",")[,1]
+hosts$Hostcountry <- str_split_fixed(hosts$Host, n=2, ", ")[,2]
+hosts <- hosts[-c(5,6,25,26),]
+hosts <- hosts[c("Year", "City", "Hostcountry")]
+city.compare <- cbind(hosts$City, unique(paste(winter$Year, winter$City, sep=" ")))
+winter$City <- ifelse(winter$City=='St.Moritz', 'St. Moritz', as.character(winter$City))
+winter$City <- ifelse(winter$City=='Garmisch Partenkirchen', 'Garmisch-Partenkirchen', as.character(winter$City))
+winter <- merge(winter, hosts, by=c("Year", "City"))
+
+#Calculating Unique Medals and Creating Long Data by Medal Type (To ensure team sports only count once)
+winter$uniquemedals <- paste(winter$Year, winter$Discipline, winter$Event, winter$Medal, winter$Gender, sep=" ")
+country.allmedals.alltime <- winter %>% group_by(CountryRename, Medal) %>% summarize(total = length(unique(uniquemedals))) %>% ungroup() 
+colnames(country.allmedals.alltime)[colnames(country.allmedals.alltime)=="CountryRename"] <- "Code"
+country.allmedals.alltime.withstats <- merge(country.allmedals.alltime, countrystats)
+
+```
+
+#### Part 1a
+
+The first task required me to calculate and visualise a summary of how many winter Olympics each country medaled in. I chose to use a **Bubble Chart** for this visualisation. The advantage of this bubble chart is that it enables me to observe the relationships between a country's logged population (the x axis), the number of years a country medaled in (the y axis) and the total number of medals (the size of the bubbles). 
+
+The visualisation reveals that there is a generally positive relationship between a country's population and both the number of years it has medaled and the total number of medals, as exemplified by the large bubbles of the United States, Germany and Russia on the top-right of the chart. This is unsurprising considering that large countries have a larger pool talent to draw from. Yet, there is also a significant few countries at the top middle of the chart that also have large bubbles, namely Norway, Finland and Sweden. These countries have mid-sized populations, but can excel in the winter Olympics because they have much experience with winter sports in Scandinavia. By contrast, China at the middle right of the chart has a large population, but has not had as much winter Olympic success. Our visualisation also reveals the interesting case of France. Although France may not be considered conventionally successful because it does not have many total medals to its name as evident by its small bubble, it is certainly a consistent contender because it has medaled in almost all the Winter Olympics. 
+
+``` {r 1.2, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+#Reshaping Long Data by Medal Type into Wide Data
+country.allmedals.alltime.wide <- spread(country.allmedals.alltime, Medal, total)
+country.allmedals.alltime.wide$Gold <- ifelse(is.na(country.allmedals.alltime.wide$Gold), 0, country.allmedals.alltime.wide$Gold)
+country.allmedals.alltime.wide$Silver <- ifelse(is.na(country.allmedals.alltime.wide$Silver), 0, country.allmedals.alltime.wide$Silver) 
+country.allmedals.alltime.wide$Bronze <- ifelse(is.na(country.allmedals.alltime.wide$Bronze), 0, country.allmedals.alltime.wide$Bronze) 
+country.allmedals.alltime.wide$allmedals <- country.allmedals.alltime.wide$Gold + country.allmedals.alltime.wide$Silver + country.allmedals.alltime.wide$Bronze
+colnames(country.allmedals.alltime.wide)[colnames(country.allmedals.alltime.wide)=="CountryRename"] <- "Code"
+country.allmedals.alltime.wide.withstats <- merge(country.allmedals.alltime.wide, countrystats)
+
+#Calculating Number of Games Each Country Medaled In
+country.allmedals.alltime.yearswon <- winter %>% group_by(CountryRename) %>% summarize(yearswon = length(unique(Year))) %>% ungroup() 
+colnames(country.allmedals.alltime.yearswon)[colnames(country.allmedals.alltime.yearswon)=="CountryRename"] <- "Code"
+country.allmedals.alltime.wide.withstats <- merge(country.allmedals.alltime.wide.withstats, country.allmedals.alltime.yearswon)
+
+#Creating Plot of Number of Years Country Medaled by Country's Population
+coul <- brewer.pal(11, "Spectral")
+coul = colorRampPalette(coul)(40)
+plot.country.allmedals.alltime.bypopulation <- ggplot(country.allmedals.alltime.wide.withstats, aes(x = log(Population), y = yearswon, label = Country)) + geom_point(aes(color=Country, size=allmedals), alpha = 0.5) + scale_size(range = c(1, 10)) + geom_text_repel(aes(label=Country), size=2.5, family="Garamond") + guides(color=FALSE) + scale_color_manual(values = coul) + xlab('Population (Log)') + ylab('Years With At Least One Medal Won') + guides(size=guide_legend(title="Total Medals")) + ggtitle("Country's Winter Olympic Success By Population") + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))
+plot.country.allmedals.alltime.bypopulation
+```
+
+#### Part 1b
+
+The second task required me to calculate how many medals of each type each country won. I chose to use a **Stacked Bar Chart** for this visualisation and limited it to the top ten countries because I felt this made the visualisation most meaningful.
+
+The visualisation reveals Germany to have been most successful at the Winter Olympics. It has the highest total number of medals. However, Russia is not far behind and if we were to look at the number of gold medals, Russia in fact slightly edges out Germany. Despite its smaller size, Norway has managed third position. If we were to look at all top 10 countries, we would notice that they are all from temperate regions, which is to be expected as such countries will have more experience with winter sports. 
+
+```{r 1.3, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+
+#Filtering Top 10 Countries in Wide Data
+top10country.allmedals.alltime.wide.withstats <- country.allmedals.alltime.wide.withstats %>% arrange(desc(allmedals)) %>% mutate(rank=row_number()) %>% filter(rank<=10)  %>% arrange(rank)
+
+#Filtering Top 10 Countries in Long Data
+top10country.allmedals.alltime.withstats <- country.allmedals.alltime.withstats %>% filter(Code %in% top10country.allmedals.alltime.wide.withstats$Code)
+
+#Ordering Medal Types
+top10country.allmedals.alltime.withstats$Medal <- as.factor(top10country.allmedals.alltime.withstats$Medal)
+top10country.allmedals.alltime.withstats$Medal = factor(top10country.allmedals.alltime.withstats$Medal,levels(top10country.allmedals.alltime.withstats$Medal)[c(1,3,2)])
+
+#Creating Plot of Medal Count By Country
+plot.top10country.allmedals.alltime <- ggplot(top10country.allmedals.alltime.withstats, aes(y=total, x=reorder(Country, -total), fill = Medal)) + xlab('Country') + ylab('Medal Count') + ggtitle('Medal Count By Country') + theme_tufte() +theme(legend.position = c(0.9,0.9), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + geom_bar(stat='identity') + scale_fill_manual(values=c("sienna", "slategray", "gold3")) 
+plot.top10country.allmedals.alltime
+
+```
+
+#### Part 1c
+
+The next task required me to visualise the change in the medal count over time. I chose to use a **Stacked Area Chart** for this visualisation and again limited it to the top ten countries. The stacked area chart has the advantage over the line chart in that it not only reveals how the medal count of each country changed over time, but it *also* reveals how the total medal count of these countries has changed over time and how the proportion of each country's medal count has changed over time.
+
+The first takeaway from the visualisation is that the total number of medals have increased exponentially from 1920 to present day, which should probably be expected considering how the number of Winter Olympic events have grown. The chart also reveals that Norway was the most dominant player from the 1920s to 1950s, but it was then replaced by Germany and Russia from 1970s to the 1990s. Since the 1990s, the United States, Canada and Norway (again) have had an increasing share of the Winter Olympic Medals. In 2014, the proportion of medals between the top 10 countries is far more evenly distributed. We also notice that some countries have been far more consistent than others: Finland, the United States and Norway have won a proportion of medals since the 1920s, but Russia only started winning medals in the 1950s and Canada only started becoming a real contender in the 1980s. 
+
+```{r 1.4, fig.align='center', echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+#Creating a Dataframe Matching Every Country to Every Olympic Date
+winteryears<- c(1924, 1928, 1932, 1936, 1948, 1952, 1956, 1960,1964,1968,1972,1976,1980,1984,1988,1992,1994,1998,2002,2006,2010,2014)
+countries <- country.allmedals.alltime.wide.withstats[c("Country")]
+countries.winteryears <- merge(countries, winteryears)
+colnames(countries.winteryears)[colnames(countries.winteryears)=="y"] <- "Year"
+
+#Creating Long Data by Year 
+country.allmedals.byyear <-  winter %>% group_by(CountryRename, Year, Hostcountry) %>% summarize(allmedals = length(unique(uniquemedals))) %>% ungroup() 
+colnames(country.allmedals.byyear)[colnames(country.allmedals.byyear)=="CountryRename"] <- "Code"
+country.allmedals.byyear.withstats <- merge(country.allmedals.byyear, countrystats)
+
+#Recoding Years with No Medal Data to zero
+country.allmedals.byyear.withstats <- full_join(countries.winteryears, country.allmedals.byyear.withstats, by=c("Country", "Year")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals)) 
+
+#Filtering to Top 10 countries
+top10country.allmedals.byyear.withstats <- country.allmedals.byyear.withstats %>% filter(Country %in% top10country.allmedals.alltime.wide.withstats$Country)
+
+#Ordering Countries by Rank
+top10ranks <- top10country.allmedals.alltime.wide.withstats[c("Code", "rank")]
+top10country.allmedals.byyear.withstats <- full_join(top10country.allmedals.byyear.withstats, top10ranks)
+top10country.allmedals.byyear.withstats$Country <- as.factor(top10country.allmedals.byyear.withstats$Country)
+top10country.allmedals.byyear.withstats$Country = factor(top10country.allmedals.byyear.withstats$Country, levels=unique(top10country.allmedals.byyear.withstats$Country[order(-top10country.allmedals.byyear.withstats$rank)]), ordered=TRUE)
+
+#Creating Plot of Total Medals Over Time By Country
+plot.top10country.allmedals.byyear <- ggplot(top10country.allmedals.byyear.withstats, aes(x=Year, y=allmedals, fill=Country)) + geom_area() + xlab('Year') + ylab('Total Medals') + ggtitle('Total Medals Over Time By Country') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + scale_fill_brewer(palette="Spectral")
+plot.top10country.allmedals.byyear
+```
+
+#### Part 1d
+
+My final task in Part 1 was to consider gender in my visualisation. The first thing I notice from the visualisation is that the increase in the total number of medals is far more exponential for women than men. This suggests that there were few women's events in the early 20th century and that it is a recent phenomenon that women are taking part in Winter sports. Next, it is interesting that the top ten countries are different for women and for men. France and China are in the top ten countries for women's medals and Switzerland and Sweden are in the top ten countries for men's medals. Turning to the country trends over time by gender, we notice in the women's chart that the dominant players have largely been Germany and Russia, with the distribution of medals only becoming more even between Germany, Russia, the United States and Canada the 2000s. By contrast, in the men's chart, Germany and Russia were only dominant from the 1970s to 1990s. Before the 1970s, the dominant player was Norway and after the 1990s, the distribution of medals were more even between Norway, Russia, Germany, the United States and Austria. 
+
+```{r 1.5, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+
+#Ranking Top 10 Countries For Each Gender
+top10countries.allmedals.alltime.eachgender <- winter %>% group_by(CountryRename, Gender) %>% summarize(allmedals = length(unique(uniquemedals))) %>% arrange(desc(allmedals)) %>% group_by(Gender) %>% mutate(rank=row_number()) %>% filter(rank<=10) %>% arrange(Gender, rank)
+top10countries.allmedals.alltime.women <-top10countries.allmedals.alltime.eachgender %>% filter(Gender=="Women") 
+colnames(top10countries.allmedals.alltime.women)[colnames(top10countries.allmedals.alltime.women)=="CountryRename"] <- "Code"
+top10countries.allmedals.alltime.women <- merge(top10countries.allmedals.alltime.women, countrystats)
+top10countries.allmedals.alltime.men <-top10countries.allmedals.alltime.eachgender %>% filter(Gender=="Men") 
+colnames(top10countries.allmedals.alltime.men)[colnames(top10countries.allmedals.alltime.men)=="CountryRename"] <- "Code"
+top10countries.allmedals.alltime.men <- merge(top10countries.allmedals.alltime.men, countrystats)
+
+#Filter Top Ten Countries By Year and Gender
+country.allmedals.byyear.bygender <-  winter %>% group_by(CountryRename, Year, Hostcountry, Gender) %>% summarize(allmedals = length(unique(uniquemedals))) %>% ungroup() 
+colnames(country.allmedals.byyear.bygender)[colnames(country.allmedals.byyear.bygender)=="CountryRename"] <- "Code"
+country.allmedals.byyear.bygender.withstats <- merge(country.allmedals.byyear.bygender, countrystats)
+top10womencountry.allmedals.byyear.withstats <- country.allmedals.byyear.bygender.withstats %>% filter(Gender == 'Women')  %>% filter(Code %in% top10countries.allmedals.alltime.women$Code)
+top10mencountry.allmedals.byyear.withstats <- country.allmedals.byyear.bygender.withstats %>% filter(Gender == 'Men') %>% filter(Code %in% top10countries.allmedals.alltime.men$Code)
+
+#Determining Years where Country had 0 medals for Particular Genders
+top10womencountries <- top10countries.allmedals.alltime.women[c("Country")]
+top10womencountries.winteryears <- merge(top10womencountries, winteryears)
+colnames(top10womencountries.winteryears)[colnames(top10womencountries.winteryears)=="y"] <- "Year"
+top10womencountry.allmedals.byyear.withstats <- full_join(top10womencountries.winteryears, top10womencountry.allmedals.byyear.withstats, by=c("Country", "Year")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals))
+top10mencountries <- top10countries.allmedals.alltime.men[c("Country")]
+top10mencountries.winteryears <- merge(top10mencountries, winteryears)
+colnames(top10mencountries.winteryears)[colnames(top10mencountries.winteryears)=="y"] <- "Year"
+top10mencountry.allmedals.byyear.withstats <- full_join(top10mencountries.winteryears, top10mencountry.allmedals.byyear.withstats, by=c("Country", "Year")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals)) 
+
+#Ordering Countries by Rank
+top10womenranks <- top10countries.allmedals.alltime.women [c("Code", "rank")]
+top10womencountry.allmedals.byyear.withstats <- full_join(top10womencountry.allmedals.byyear.withstats, top10womenranks)
+top10womencountry.allmedals.byyear.withstats$Country <- as.factor(top10womencountry.allmedals.byyear.withstats$Country)
+top10womencountry.allmedals.byyear.withstats$Country = factor(top10womencountry.allmedals.byyear.withstats$Country, levels=unique(top10womencountry.allmedals.byyear.withstats$Country[order(-top10womencountry.allmedals.byyear.withstats$rank)]), ordered=TRUE)
+top10menranks <- top10countries.allmedals.alltime.men [c("Code", "rank")]
+top10mencountry.allmedals.byyear.withstats <- full_join(top10mencountry.allmedals.byyear.withstats, top10menranks)
+top10mencountry.allmedals.byyear.withstats$Country <- as.factor(top10mencountry.allmedals.byyear.withstats$Country)
+top10mencountry.allmedals.byyear.withstats$Country = factor(top10mencountry.allmedals.byyear.withstats$Country, levels=unique(top10mencountry.allmedals.byyear.withstats$Country[order(-top10mencountry.allmedals.byyear.withstats$rank)]), ordered=TRUE)
+
+#Creating Plot of Total Medals Over Time By Country and Gender
+plot.top10womencountry.allmedals.byyear <- ggplot(top10womencountry.allmedals.byyear.withstats, aes(x=Year, y=allmedals, fill=Country)) + geom_area() + xlab('Year') + ylab('Total Medals') + ggtitle('Total Medals Over Time By Country (Women)') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + scale_fill_brewer(palette="PiYG") + guides(fill=guide_legend(ncol=2))
+plot.top10mencountry.allmedals.byyear <- ggplot(top10mencountry.allmedals.byyear.withstats, aes(x=Year, y=allmedals, fill=Country)) + geom_area() + xlab('Year') + ylab('Total Medals') + ggtitle('Total Medals Over Time By Country (Men)') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + scale_fill_brewer(palette="RdBu") + guides(fill=guide_legend(ncol=2))
+plot.gendertrend <- ggarrange(plot.top10womencountry.allmedals.byyear, plot.top10mencountry.allmedals.byyear, ncol = 1, nrow = 2, align='hv')
+plot.gendertrend
+```
+
+#### Part 1e
+
+From the discussion of all the visualisations above, I would recommend the visualisation of Total Medals Over Time By Country (Part 1c). This visualisation is functional and aesthetic, and as I had already explained in Part 1c, it is packed with information that can allow for further exploration beyond simply the trend of a country's medal count over time. Yet this visualisation is also simple and easy to navigate. This makes it preferable to the much more complex visualisation of Total Medals Over Time By Country and Gender (Part 1d). 
+
+#### Part 2
+
+The task in Part 2 required me to visualise different ways of measuring a country's overall success in the Winter Olympics. I decided to measure success in these three ways:
+1. By calculating an Olympic Score by assigning three points for every Gold, two points for every Silver and one point for every Bronze. Such a method was chosen because it not only gives credit to every medal won, but also deservingly gives more credit for Gold and Silver medals. 
+2. Dividing the Olympic Score by total population to obtain a Population-Adjusted Olympic Score
+3. Dividing the Olympic Score by GDP per Capita to obtain a GDP per Capita-Adjusted Olympic Score
+
+The scores were all then standardised using the 'scale' function, which subtracted the scores by their means and then divided by their standard deviation. Standardisation was done so that all three scores could be compared with each other. I then chose to use a **Dot Chart** for the visualisation of the standardised scores. The dot chart has the advantage of elegantly displaying all three scores on the same axis for each country. 
+
+From the visualisation, we notice that Russia and Germany are neck in neck with the highest raw standardised scores. However, once we consider GDP per Capita adjustment, Russia is then considered to perform far better than Germany. Russia is therefore pulling way above its weight in the Olympics for its level of economic development. Another highly surprising result is Liechtenstein, a country which seems to be the hidden star of the Winter Olympics. Liechtenstein has a less-than-average raw standardised score below 0. However, Liechtenstein also has a very small population. Hence, its population-adjusted standardised score is extraordinarily high above 5, which is much higher than its nearest competitor (Norway). 
+
+```{r 1.6, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+
+#Calculate Score
+country.allmedals.alltime.wide.withstats$score <- 3*country.allmedals.alltime.wide.withstats$Gold + 2*country.allmedals.alltime.wide.withstats$Silver + country.allmedals.alltime.wide.withstats$Bronze
+
+#Adjust Score by Population and GDP
+country.allmedals.alltime.wide.withstats$scorepopadj <- country.allmedals.alltime.wide.withstats$score/country.allmedals.alltime.wide.withstats$Population
+country.allmedals.alltime.wide.withstats$scoregdpadj <- country.allmedals.alltime.wide.withstats$score/country.allmedals.alltime.wide.withstats$GDP.per.Capita
+
+#Standardise Scores
+country.allmedals.alltime.wide.withstats$"Standardized Score" <- scale(country.allmedals.alltime.wide.withstats$score)
+country.allmedals.alltime.wide.withstats$"Population Adjusted Standardized Score" <- scale(country.allmedals.alltime.wide.withstats$scorepopadj)
+country.allmedals.alltime.wide.withstats$"GDP per Capita Adjusted Standardized Score" <- scale(country.allmedals.alltime.wide.withstats$scoregdpadj)
+country.allmedals.alltime.wide.withstats.scorepanel <- gather(country.allmedals.alltime.wide.withstats, key = scoretype, value = value, "Standardized Score", "Population Adjusted Standardized Score", "GDP per Capita Adjusted Standardized Score")
+
+#Creating Plot of Standardized Scores by Country
+plot.countryscores <- ggplot(country.allmedals.alltime.wide.withstats.scorepanel, aes(x=value, y=reorder(Country, score), group = 'scoretype', color = 'scoretype')) + geom_point(aes(color=scoretype), alpha = 0.8) + xlab('Score') + ylab('Country') + ggtitle('Standardized Scores By Country') + theme_tufte() +theme(panel.grid.major.y = element_line(colour="gray90"), legend.position = c(0.8, 0.5), legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))  + scale_color_manual(values=c("tan2", "darkolivegreen2", "royalblue2")) + guides(color=guide_legend(title="Score Type"))  
+plot.countryscores
+```
+
+#### Part 3
+
+Part 3 required me to visualise a host country advantage (or lack thereof). I chose to use a **Heat Map** for this visualisation. A heat map quickly reveals how the performance of each country differs from year to year and hence we can observe whether being a host nation in a particular year results in better performance both compared to other countries in that year, and also compared to the given country other years. Unlike in the previous visualisations, my dependent variable for this heat map is the percentage of medals a country won in each year, rather than the raw total. This is to control for the fact that the total number of medals available to be won have increased over time.
+
+The visualisation reveals mixed results. For some countries in some years, there was a host nation advantage, but this was by no means a consistent trend. For instance, the year when the United States won their highest percentage of medals ever was in 1932, when they were the host nation. Yet, the United States also performed averagely for other years when they were the host nation (1960, 1980, 2002). Similarly, Switzerland performed well in 1948 when they were the host nation, but did not do as well in 1928 when they were also the host nation. Interestingly, in the years when Germany and Russia performed the best (1970s-1990s), they were not the host nation for any of the games. 
+
+```{r 1.7, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+
+#Determining if a Country is a Host Country
+country.allmedals.byyear.withstats$HostStatus <- ifelse(country.allmedals.byyear.withstats$Country==country.allmedals.byyear.withstats$Hostcountry, 'Host', NA)
+
+#Calculating Percentage of Medals a Country Won in Each Year
+totalyearmedals <- country.allmedals.byyear.withstats %>% group_by(Year) %>% summarize(totalyearmedals = sum(allmedals))
+country.allmedals.byyear.withstats <- merge(country.allmedals.byyear.withstats, totalyearmedals)
+country.allmedals.byyear.withstats$PctMedals <- (country.allmedals.byyear.withstats$allmedals/country.allmedals.byyear.withstats$totalyearmedals)*100
+
+#Create Plot of Percentage of Medals Won Over Time
+plot.hostcountryadvantage <- ggplot(country.allmedals.byyear.withstats, aes(x=as.character(Year), y=Country, fill = PctMedals)) + geom_tile() + labs(x='Year', y='Country', fill="Pct Medals") + ggtitle('Percentage Of Medals Won Over Time') + theme_tufte() +theme(axis.ticks=element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))  + scale_fill_gradient(low = "whitesmoke",high = "steelblue") + geom_text(aes(label=HostStatus), size=3, family="Garamond", fontface='bold')
+plot.hostcountryadvantage
+
+```
+
+#### Part 4a
+
+In Part 4, I had to visualise a country's success in particular sports. For this task, I chose to focus on the Scandinavian countries because they were small countries that have performed exceptionally well at the Winter Olympics. For simplicity, I also chose to focus on Sport, rather than Discipline or Event. I chose to use a **Line Graph** for this visualisation, but faceted the graphs by country. The advantage of the line graph is that it enables us to quickly see the changes in a country's success in each sport over time. 
+
+From the visualisation, the first thing we notice is that the Scandinavians are not good at all Winter Sports. In fact, they have had no medals in the Luge or in Bobsleigh at all in any year. Across all three countries, their best sport is skiing, where they have won the most medals consistently over time. Norway in particular has become extraordinarily good at skiing since the 1990s. All countries used to be good at skating in the 20th century (in fact Norway was as good in skating as in skiing up to the 1980s), but their success in this sport has diminished in recent years. Each of the countries also have their own specialisation in recent years. For instance, Norway is good at the biathlon and Finland is good at ice hockey. Sweden seems to be the jack of all trades with a few medals that are evenly distributed between biathlon, ice hockey and curling.
+
+```{r 1.8, fig.align='center', warning=FALSE,message=FALSE,error=FALSE}
+
+#Subsetting Long Data by Scandinavian Countries, Taking into Account Year and Sport
+scandinavia = subset(winter, CountryRename=='SWE'|CountryRename=='NOR'|CountryRename=='FIN')
+scandinavia.allmedals.byevent.byyear <-  scandinavia %>% group_by(CountryRename, Year, Hostcountry, Sport) %>% summarize(allmedals = length(unique(uniquemedals))) %>% ungroup() 
+colnames(scandinavia.allmedals.byevent.byyear)[colnames(scandinavia.allmedals.byevent.byyear)=="CountryRename"] <- "Code"
+scandinavia.allmedals.byevent.byyear.withstats <- merge(scandinavia.allmedals.byevent.byyear, countrystats)
+
+#Determining Years where Country had 0 medals for Particular Sports
+scandinavia.countries.winteryears <- subset(countries.winteryears, Country=='Sweden'|Country=='Norway'|Country=='Finland')
+sport <- unique(winter$Sport)
+scandinavia.countries.winteryears <- merge(scandinavia.countries.winteryears, sport)
+colnames(scandinavia.countries.winteryears)[colnames(scandinavia.countries.winteryears)=="y"] <- "Sport"
+scandinavia.allmedals.byevent.byyear.withstats <- full_join(scandinavia.countries.winteryears, scandinavia.allmedals.byevent.byyear.withstats, by=c("Country", "Year", "Sport")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals))
+
+#Create Plot of Total Medals Over Time By Sport
+plot.scandinavia.byevent <- ggplot(scandinavia.allmedals.byevent.byyear.withstats, aes(x=Year, y=allmedals, color=Sport)) + geom_line() + facet_grid(Country ~.) + xlab('Year') + ylab('Total Medals') + ggtitle('Total Medals Over Time By Sport (Scandinavia)') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + scale_color_brewer(palette="Set2") + guides(color=guide_legend(title="Sport"))
+plot.scandinavia.byevent
+
+```
+
+#### Part 4b
+
+I then decided to extend my previous visualisation to look at variation by gender. Again, we see interesting trends. First, we notice that the Scandinavian's success in skating and skiing in the 20th century was driven almost entirely by their male athletes. Their female athletes only started winning medals consistently from the 1970s onwards (and for Sweden only from the 1990s!).The female athletes are also less diverse in their medals won, with most coming from Skiing. By contrast, the male athletes have won medals from more kinds of sports such as ice hockey, biathlon and curling.   
+
+```{r 1.9, fig.align='center', warning=FALSE,message=FALSE,error=FALSE, comment=FALSE, cache=FALSE}
+
+#Subsetting Long Data by Scandinavian Countries, Taking into Account Year and Sport and Gender
+scandinavia.allmedals.byevent.bygender.byyear <-  scandinavia %>% group_by(CountryRename, Year, Hostcountry, Gender, Sport) %>% summarize(allmedals = length(unique(uniquemedals))) %>% ungroup() 
+colnames(scandinavia.allmedals.byevent.bygender.byyear)[colnames(scandinavia.allmedals.byevent.bygender.byyear)=="CountryRename"] <- "Code"
+scandinavia.allmedals.byevent.bygender.byyear.withstats <- merge(scandinavia.allmedals.byevent.bygender.byyear, countrystats)
+women.scandinavia.allmedals.byevent.byyear.withstats  <- scandinavia.allmedals.byevent.bygender.byyear.withstats  %>% filter(Gender=="Women") 
+men.scandinavia.allmedals.byevent.byyear.withstats  <- scandinavia.allmedals.byevent.bygender.byyear.withstats  %>% filter(Gender=="Men") 
+
+#Determining Years where Country had 0 medals for Particular Sports
+women.scandinavia.allmedals.byevent.byyear.withstats <- full_join(scandinavia.countries.winteryears, women.scandinavia.allmedals.byevent.byyear.withstats, by=c("Country", "Year", "Sport")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals))
+men.scandinavia.allmedals.byevent.byyear.withstats <- full_join(scandinavia.countries.winteryears, men.scandinavia.allmedals.byevent.byyear.withstats, by=c("Country", "Year", "Sport")) %>% mutate(allmedals = ifelse(is.na(allmedals), 0, allmedals))
+
+#Create Plot of Total Medals Over Time By Sport for Men and Women
+plot.men.scandinavia.byevent <- ggplot(men.scandinavia.allmedals.byevent.byyear.withstats, aes(x=Year, y=allmedals, group=Sport, color=Sport)) + geom_line() + facet_grid(Country ~.) + xlab('Year') + ylab('Total Medals') + ggtitle('Men') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, size=14), text=element_text(family="Garamond")) + scale_color_brewer(palette="Set2") + guides(color=guide_legend(title="Sport"))
+plot.women.scandinavia.byevent <- ggplot(women.scandinavia.allmedals.byevent.byyear.withstats, aes(x=Year, y=allmedals, group=Sport, color=Sport)) + geom_line() + facet_grid(Country ~.) + xlab('Year') + ylab('Total Medals') + ggtitle('Women') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, size=14), text=element_text(family="Garamond")) + scale_color_brewer(palette="Set2") + guides(color=guide_legend(title="Sport"))
+plot.scandinavia.gender.trend <- ggarrange(plot.women.scandinavia.byevent, plot.men.scandinavia.byevent , ncol = 2, nrow = 1, align='hv', common.legend = T, legend = "bottom")
+plot.scandinavia.gender.trend <- grid.arrange(plot.scandinavia.gender.trend, top =textGrob("Total Medals Over Time By Sport (Scandinavia)", gp=gpar(fontsize=14,fontfamily="Garamond",fontface="bold")))
+```
+
+#### Part 5
+
+In Part 5, the task was to visualise the most successful athletes of all time (i.e. the athletes that have won the most overall medals). I chose to use a **Dot Chart** for the visualisation and limited it to the top ten athletes of all time. The final visualisation has more than ten athletes listed, however, because rank number ten is tied between 7 people. The dot chart was preferred because I could differentiate the shape and the colour of the dots to reveal country and sport specialisation of each athlete. Moreover, by italicising the axes, I could also indicate the gender of each athlete. Hence, I am able to convey much information in a relatively simple and elegant manner.
+
+From the visualisation, we notice that the top two athletes are Norwegian (purple colours) and are males. The top athlete participated in the biathlon and the second top athlete was a skiier. Overall, the top athletes all only participated in three sports: biathlon, skiing and skating, and only come from six countries: Germany, Norway, Russia, Sweden, Italy and the United States (though Italy and the United States are only represented by one athlete each). It is also interesting that most of the top athletes (9 out of 16) are female.
+
+```{r 1.10, fig.align='center', warning=FALSE,message=FALSE,error=FALSE, comment=FALSE, cache=FALSE}
+
+#Creating Long Data by Athlete
+athletes.allmedals <- winter %>% group_by(CountryRename, Gender, Sport, Athlete) %>% summarize(allmedals = length(unique(uniquemedals))) %>% ungroup() %>% arrange(desc(allmedals)) 
+colnames(athletes.allmedals)[colnames(athletes.allmedals)=="CountryRename"] <- "Code"
+athletes.allmedals.withstats <- merge(athletes.allmedals, countrystats)
+
+#Ranking Athletes and Filtering to Top 10
+athletes.allmedals.withstats$rank <- rank(-athletes.allmedals.withstats$allmedals, na.last = TRUE, ties.method = "min")
+top10athletes.allmedals.withstats <- subset(athletes.allmedals.withstats, athletes.allmedals.withstats$rank <= 10)
+
+#Cleaning names of Athletes
+top10athletes.allmedals.withstats$Athlete <- ifelse(top10athletes.allmedals.withstats$allmedals==12, "DAEHLIE, Bjorn", as.character(top10athletes.allmedals.withstats$Athlete))
+
+#Distinguishing Women Athletes
+top10athletes.allmedals.withstats$Italic <- ifelse(top10athletes.allmedals.withstats$Gender=='Women', "italic", "plain")
+
+#Create Plot of Total Medals Over Time By Athlete
+top10athletes.allmedals.withstats <- top10athletes.allmedals.withstats %>% arrange(desc(allmedals), Athlete) 
+plot.topathletes <- ggplot(top10athletes.allmedals.withstats, aes(x=allmedals, y=reorder(Athlete, -allmedals))) + geom_point(aes(color=Country, shape=Sport)) + xlab('Total Medals') + ylab('Athlete') + ggtitle('Total Medals By Athlete') + theme_tufte() +theme(axis.text.y = element_text(face = top10athletes.allmedals.withstats$Italic), panel.grid.major.y = element_line(colour="gray90"), legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))  + scale_color_brewer(palette = "Dark2") + guides(color=guide_legend(title="Country")) + guides(shape=guide_legend(title="Sport")) 
+plot.topathletes
+```
+
+#### Part 6a
+
+The task in Part 6 required me to choose two visualisations to make interactive and to explain my choices. 
+
+The first visualisation I chose was the heat map visualising host nation advantage in Part 3. I chose to make this map interactive because I believe there is much information to be explored in this map, which is not immediately obvious in a static map. For instance, with an interactive heatmap, by moving the cursor over to the tile representing a specific year and country, the user can now find out the exact percentage of medals the country won for that year. Such precise information cannot be conveyed through the colour graduation of the tiles in a static graph. 
+
+```{r 1.11, fig.align='center', warning=FALSE,message=FALSE,error=FALSE, comment=FALSE, cache=FALSE}
+forplotly.country.allmedals.byyear.withstats <- country.allmedals.byyear.withstats
+forplotly.country.allmedals.byyear.withstats$Year <- as.character(forplotly.country.allmedals.byyear.withstats$Year)
+forplotly.hostcountryadvantage <- ggplot(forplotly.country.allmedals.byyear.withstats, aes(x=Year, y=Country, fill = PctMedals)) + geom_tile() + labs(x='Year', y='Country', fill="Pct Medals") + ggtitle('Percentage of Medals Won Over Time') + theme_tufte() +theme(axis.ticks=element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond"))  + scale_fill_gradient(low = "whitesmoke",high = "steelblue") + geom_text(aes(label=HostStatus), size=3, family="Garamond", fontface='bold')
+div(ggplotly(forplotly.hostcountryadvantage, tooltip = c("Year", "Country", "PctMedals", "HostStatus")), align = 'center')
+```
+
+#### Part 6b
+
+The second visualisation I chose was the line graph visualising the Scandinavian's total medals over time by sport in Part 4a. I chose to make this map interactive because I the user can use the interactive tools to find out interesting trends. For instance, the user can click on different sports in the legend to focus on the relationship between specific sports over time. The user can also move the cursor over the different lines to see how the precise total medal count for each sport has changed over timer. The user can further zoom into parts of the line graph that may appear rather cluttered on first sight to find out more about the trends in those particular years. 
+
+```{r 1.12, fig.align='center', warning=FALSE,message=FALSE,error=FALSE, comment=FALSE, cache=FALSE}
+forplotly.scandinavia.allmedals.byevent.byyear.withstats <- scandinavia.allmedals.byevent.byyear.withstats
+colnames(forplotly.scandinavia.allmedals.byevent.byyear.withstats)[colnames(forplotly.scandinavia.allmedals.byevent.byyear.withstats)=="allmedals"] <- "TotalMedals"
+forplotly.scandinavia.byevent <- ggplot(forplotly.scandinavia.allmedals.byevent.byyear.withstats, aes(x=Year, y=TotalMedals, color=Sport)) + geom_line() + facet_grid(Country ~.) + labs(x='Year', y='Total Medals', color='Sport') + ggtitle('Total Medals Over Time By Sport (Scandinavia)') + theme_tufte() +theme(legend.position = "right", legend.title.align=0.5, plot.title = element_text(hjust = 0.5, face='bold', size=14), text=element_text(family="Garamond")) + scale_color_brewer(palette="Set2") 
+div(ggplotly(forplotly.scandinavia.byevent, tooltip = c("Year", "Sport", "TotalMedals")), align = 'center')
+```
+
+#### Part 7
+
+The final task of the assignment required me to make a datatable interactive. 
+
+Of all the dataframes I have created, I chose to make my wide date frame, which lists the all time medal count of each country, interactive. This data frame also has information on the country's medal county by type, its population, its GDP per capita, its Olympic Score (and standardised and adjusted variants) and the number of years it has medaled. I chose to include these information because I think they give a good overall snapshot of a country's success at the Winter Olympics, which is probably the information most users want. Including the Olympic Scores and its variants enables the user to judge each country's overall success on different criteria. The datatable has sorting and search functions for added convenience. 
+
+```{r 1.13, fig.align='center', warning=FALSE,message=FALSE,error=FALSE, comment=FALSE, cache=FALSE}
+fordatatable.country.allmedals.alltime.wide.withstats <- country.allmedals.alltime.wide.withstats
+fordatatable.country.allmedals.alltime.wide.withstats <- fordatatable.country.allmedals.alltime.wide.withstats[,c(6,1,5,2,3,4,10,13,14,15,7,8,9)]
+colnames(fordatatable.country.allmedals.alltime.wide.withstats)[colnames(fordatatable.country.allmedals.alltime.wide.withstats)=="allmedals"] <- "Total Medals"
+colnames(fordatatable.country.allmedals.alltime.wide.withstats)[colnames(fordatatable.country.allmedals.alltime.wide.withstats)=="score"] <- "Olympic Score"
+colnames(fordatatable.country.allmedals.alltime.wide.withstats)[colnames(fordatatable.country.allmedals.alltime.wide.withstats)=="GDP.per.Capita"] <- "GDP Per Capita"
+colnames(fordatatable.country.allmedals.alltime.wide.withstats)[colnames(fordatatable.country.allmedals.alltime.wide.withstats)=="yearswon"] <- "Years Medaled"
+fordatatable.country.allmedals.alltime.wide.withstats[,c('Standardized Score', 'Population Adjusted Standardized Score', 'GDP per Capita Adjusted Standardized Score', 'GDP Per Capita')]=round(fordatatable.country.allmedals.alltime.wide.withstats[,c('Standardized Score', 'Population Adjusted Standardized Score', 'GDP per Capita Adjusted Standardized Score', 'GDP Per Capita')],2)
+datatable(fordatatable.country.allmedals.alltime.wide.withstats, options = list(autoWidth = TRUE)) %>% formatStyle('Country',  color = 'white', backgroundColor = 'slategray', fontWeight = 'bold')
+```
