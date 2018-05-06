@@ -11,6 +11,8 @@ navbar:
       href: kickstarter.html
     - text: "Senator Networks"
       href: senate.html
+    - text: "Terrorism"
+      href: terrorism.html
 output:
   html_document:
     theme: sandstone

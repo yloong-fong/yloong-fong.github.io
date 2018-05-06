@@ -1,0 +1,217 @@
+---
+title: "Data Visualisations of Terrorism"
+output: html_document
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+\newline
+
+#### Setup
+
+\newline
+
+For this exercise, I visualise terrorist attacks in the United States using data from the Global Terrorism Database and Profiles of Perpetrators of Terrorism. The dataset was altered by only including attacks on US soil from the 1970s to present day that had at least one fatality.
+
+\newline
+
+#### Part 1
+
+\newline
+
+I first create an interactive map of the terrorist attacks in the United States. The terrorist attacks are coloured by the ideology of the terrorist group and sized according to the number of fatalities.I created multiple layers in this interactive map corresponding to each decade from the 1970s so the user can visualise how terrorist attacks have evolved over time. I provide popup information on the (1) name of terrorist group, (2) location of attack, (3) date of attack, (4) ideology of perpetrator, (5) number of fatalities and (6) type of attack. 
+
+\newline
+
+The map reveals that most attacks cluster around the coasts, particularly in the cities of Los Angeles and New York. The map further reveals that the number of attacks have decreased over time, but the severity of attacks (ie. the number of fatalities) has increased. Finally, the map reveals that the ideology of attackers have changed over time with there being much fewer left-wing terrorist attacks today.
+
+\newline
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+library(rgdal)
+library(leaflet)
+library(dplyr)
+library(plyr)
+library(magrittr)
+library(RColorBrewer)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+us_fatal <- read.csv("ussubset.csv")
+usa <- readOGR('cb_2016_us_state_20m.shp', verbose = FALSE)
+
+us_fatal <- us_fatal[us_fatal$latitude >= 24.7433195,]
+us_fatal <- us_fatal[us_fatal$latitude <= 49.3457868,]
+us_fatal <- us_fatal[us_fatal$longitude >= -124.7844079,]
+us_fatal <- us_fatal[us_fatal$longitude <= -66.9513812,]
+
+us_fatal_2010  <- subset(us_fatal, attackdecade==2010)
+us_fatal_2000  <- subset(us_fatal, attackdecade==2000)
+us_fatal_1990  <- subset(us_fatal, attackdecade==1990)
+us_fatal_1980  <- subset(us_fatal, attackdecade==1980)
+us_fatal_1970  <- subset(us_fatal, attackdecade==1970)
+
+
+pal = colorFactor(c("purple","red","green","blue","orange","black"), domain = us_fatal$DOM_I) 
+color_ideology_2010 = pal(us_fatal_2010$DOM_I)
+color_ideology_2000 = pal(us_fatal_2000$DOM_I)
+color_ideology_1990 = pal(us_fatal_1990$DOM_I)
+color_ideology_1980 = pal(us_fatal_1980$DOM_I)
+color_ideology_1970 = pal(us_fatal_1970$DOM_I)
+
+leaflet(usa, width ="100%", height = "400px") %>% addProviderTiles("Stamen.TonerLite", options = providerTileOptions(minZoom=3, maxZoom=8))  %>% 
+  
+  setView(lat=38, lng=-100, zoom =4) %>%
+  
+  addPolygons(stroke = TRUE, smoothFactor = 0.5, weight=1, color='#333333', opacity=0.5, fillColor = "white", label = usa@data$NAME) %>% 
+  
+  addCircleMarkers(group="2010 to present attacks", data=us_fatal_2010, lng = ~longitude, lat = ~latitude, color=color_ideology_2010, fillColor=color_ideology_2010, radius=1.5*sqrt(us_fatal_2010$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_2010$gname,"<br/>", "State:",us_fatal_2010$provstate,"<br/>", "Date of Attack:", us_fatal_2010$date,"<br/>", "Ideology:", us_fatal_2010$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_2010$nkill, "<br/>", "Attack Type:",  us_fatal_2010$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="2000 to 2009 attacks", data=us_fatal_2000, lng = ~longitude, lat = ~latitude, color=color_ideology_2000, fillColor=color_ideology_2000, radius=1.5*sqrt(us_fatal_2000$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_2000$gname,"<br/>","State:", us_fatal_2000$provstate,"<br/>","Date of Attack:", us_fatal_2000$date,"<br/>", "Ideology:", us_fatal_2000$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_2000$nkill, "<br/>", "Attack Type:",  us_fatal_2000$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="1990 to 1999 attacks", data=us_fatal_1990, lng = ~longitude, lat = ~latitude, color=color_ideology_1990, fillColor=color_ideology_1990, radius=1.5*sqrt(us_fatal_1990$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1990$gname,"<br/>","State:", us_fatal_1990$provstate,"<br/>", "Date of Attack:", us_fatal_1990$date,"<br/>", "Ideology:", us_fatal_1990$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1990$nkill, "<br/>", "Attack Type:",  us_fatal_1990$attacktype1_txt, "<br/>")) %>%
+ 
+   addCircleMarkers(group="1980 to 1989 attacks", data=us_fatal_1980, lng = ~longitude, lat = ~latitude, color=color_ideology_1980, fillColor=color_ideology_1980, radius=1.5*sqrt(us_fatal_1980$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1980$gname,"State:", us_fatal_1980$provstate,"<br/>","<br/>","Date of Attack:", us_fatal_1980$date,"<br/>", "Ideology:", us_fatal_1980$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1980$nkill, "<br/>", "Attack Type:",  us_fatal_1980$attacktype1_txt, "<br/>")) %>%
+  
+  addCircleMarkers(group="1970 to 1979 attacks", data=us_fatal_1970, lng = ~longitude, lat = ~latitude, color=color_ideology_1970, fillColor=color_ideology_1970, radius=1.5*sqrt(us_fatal_1970$nkill), weight=1, opacity = 1,  popup = paste("Perpetrator:",us_fatal_1970$gname,"<br/>","State:", us_fatal_1970$provstate,"<br/>","Date of Attack:", us_fatal_1970$date,"<br/>", "Ideology:", us_fatal_1970$DOM_I,"<br/>", "Number of Fatalities:", us_fatal_1970$nkill, "<br/>", "Attack Type:",  us_fatal_1970$attacktype1_txt, "<br/>")) %>%
+  addLegend(pal = pal, values = ~us_fatal$DOM_I, title = "Ideology of Perpetrator", position = "bottomleft") %>%
+    addLayersControl(
+overlayGroups = c("2010  to present attacks","2000 to 2009 attacks", "1990 to 1999 attacks", "1980 to 1989 attacks", "1970 to 1979 attacks"),
+options = layersControlOptions(collapsed = TRUE))  %>% hideGroup("2000 to 2009 attacks") %>% hideGroup("1990 to 1999 attacks") %>% hideGroup("1980 to 1989 attacks") %>% hideGroup("1970 to 1979 attacks")
+
+```
+
+\newline
+
+#### Part 2
+
+\newline
+
+I next create an interactive wordcloud that investigates the common terms used by terrorist organisations in their founding philosophies based on their ideology. The interactive wordcloud allows the user to choose the ideology they want to investigate, the maximum number of words in the word cloud and the minimum frequency required for a word to appear in the word cloud. 
+
+\newline
+
+The interactive word cloud reveals stark differences in the terms used by terrorist organisations from different ideologies. Right-wing organisations seem to focus on racial supremacy of whites in their philosophy as evident from the heavy use "white". By contrast, left-wing organisations focus on the need for equality for African Americans as evident from the heavy use of "black". Religious organisations expectedly use words relating to religion, though "Islam" is the most heavily used word, hence suggesting that most religious terrorists are Islamic fundamentalists. Ethno-nationalist organisations make heavy use of the words "Puerto" and "Rican", hence suggesting that most ethno-nationalist organisations that have attacked the US are in fact Puerto Rican separatists. Finally, single issue organisations use a variety of words such as "Castro", "animal", and "environment", hence revealing that there are a myriad of issues which single issue organisations rally under. 
+
+\newline
+
+```{r, fig.align='center', out.width = '100%', echo=FALSE}
+knitr::include_app("https://yloong-fong.shinyapps.io/test/",height="500px")
+```
+
+#### Part 3
+
+\newline
+
+In the network visualisation, the colour of the nodes represent the ideology of a terrorist organisation, the size of the node represents the number of years the organisation has been active for, and the line type of each edge represents whether an edge is between nodes who subscribe to the same or different ideologies.
+
+\newline
+
+From the visualisation, we find terrorist networks are organised into one large interconnected component and five smaller disparate components. The five smaller disparate components are more or less homogeneous by ideology and in the large interconnected component, terrorist organisations with the same ideology cluster together.
+
+\newline
+
+From the names of the terrorist organisations in the five smaller disparate components, we can roughly tell that they comprise a far-right White Nationalist group, a fundamentalist Islamic group, a Cuban ethno-nationalist group, a Zionist group and an anti-communist group. 
+
+\newline
+
+In the large inter-connected node, we also see four distinct groups. The first group comprises a Puerto-Rican ethno-nationalist group; the second comprises a far-left group; the third comprises foreign militant organisations, and the fourth comprises environmental groups.
+
+\newline
+
+The visualisation also reveal that the longest-surviving organisations such as Macheteros and the Black Liberation Army are most  central to their groups and the larger network.
+
+\newline
+
+```{r, dpi=250, fig.align='center', fig.height = 7, fig.width = 7, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+
+#STATIC NETWORK
+
+require(rgdal)
+require(leaflet)
+require(dplyr)
+require(plyr)
+require(magrittr)
+require(RColorBrewer)
+require(stringr)
+require(igraph)
+require(psych)
+require(knitr)
+require(ggplot2)
+require(ggpubr)
+require(ggthemes)
+require(ggrepel)
+require(ggnetwork)
+require(igraph)
+require(intergraph)
+require(extrafont)
+loadfonts()
+
+
+data <- read.csv("Terrorist selected variables.csv")
+data <- data[,c(1:41)]
+data$ORGNAME <- gsub("\\s*\\([^\\)]+\\)","",as.character(data$ORGNAME))
+data$DOM_I<- as.factor(data$DOM_I)
+data$DOM_I<- revalue(data$DOM_I, c("1"="Right-Wing", "2"="Left-Wing", "3"="Religious", "4"="Ethno-nationalist", "5"="Single Issue", "-99"="Unknown"))
+data$DOM_I<- as.character(data$DOM_I)
+data$ORGNAME<- as.character(data$ORGNAME)
+
+full_el <- read.csv("terroristedgelist.csv")
+network <- graph.data.frame(full_el)
+matrix <- get.adjacency(network, sparse=FALSE)
+network <- graph.adjacency(as.matrix(matrix),mode="undirected",weighted=NULL, diag = F) 
+
+igraph_el <- as.data.frame(get.edgelist(network, names=TRUE))
+colnames(igraph_el) <- c("Source", "Target")
+
+ideology_df <- as.data.frame(cbind(data$ORGNAME,as.character(data$DOM_I)))
+colnames(ideology_df) <- c("ORGNAME", "DOM_I")
+igraph_el <- dplyr::full_join(igraph_el, ideology_df, by = c("Source"="ORGNAME"))
+colnames(igraph_el)[which(names(igraph_el) == "DOM_I")] <- "Ideology.source"
+igraph_el <- dplyr::full_join(igraph_el, ideology_df, by = c("Target"="ORGNAME"))
+colnames(igraph_el)[which(names(igraph_el) == "DOM_I")] <- "Ideology.target"
+
+igraph_el$Ideology.match <- ifelse(igraph_el$Ideology.source==igraph_el$Ideology.target, 0, 1)
+E(network)$Ideology.match <- igraph_el$Ideology.match
+
+data$yearsactive <- data$USATK_LAST_YEAR-data$USATK_FIRST_YEAR + 1
+data$firstdecade <- round_any(data$USATK_FIRST_YEAR, 10, f = floor)
+
+V(network)$Ideology=as.character(data$DOM_I[match(V(network)$name,data$ORGNAME)])
+V(network)$Yearsactive=data$yearsactive[match(V(network)$name,data$ORGNAME)]
+V(network)$Firstdecade=as.character(data$firstdecade[match(V(network)$name,data$ORGNAME)])
+
+```
+
+```{r, dpi=300, fig.align='center', fig.height = 10, fig.width = 10, warning=FALSE,message=FALSE,error=FALSE, comment = '', echo=FALSE}
+#INTERACTIVE NETWORK
+
+require(visNetwork)
+
+nodes <- as.data.frame(cbind(V(network)$name, V(network)$Ideology, V(network)$Yearsactive))
+colnames(nodes) <- c("id", "Ideology", "Years Active")
+nodes$`Years Active` <- as.numeric(as.character(nodes$`Years Active`))
+nodes$Ideology <- factor(nodes$Ideology, levels = c("Right-Wing", "Left-Wing", "Religious", "Ethno-nationalist", "Single Issue"))
+links <- na.omit(igraph_el)
+links <- links [,c(1,2,5)]
+colnames(links ) <- c("from", "to", "Match")
+nodes$shape <- "dot"  
+nodes$title <- paste("Perpetrator:",nodes$id,"<br/>","Ideology:", nodes$Ideology,"<br/>", "Years Active:", nodes$`Years Active`)
+nodes$label <- nodes$id
+nodes$borderWidth <- 2
+nodes$size <- 8*sqrt(nodes$`Years Active`)
+nodes$group <- nodes$Ideology
+nodes$group <- factor(nodes$group, levels = c("Right-Wing", "Left-Wing", "Religious", "Ethno-nationalist", "Single Issue"))
+nodes$color.background <- c('blue', 'red', 'green', 'purple', 'orange')[nodes$Ideology]
+nodes$color.border <- "gray"
+nodes$color.highlight.background <- "black"
+nodes$color.highlight.border <- "black"
+links$dashes <- ifelse(links$Match==0, FALSE,TRUE)
+links$color <- "gray"    
+visNetwork(nodes, links , width="100%", height="500px", main="Terrorist Networks") %>% visInteraction(navigationButtons = TRUE) %>% visOptions(highlightNearest = TRUE, selectedBy = "Ideology") %>% visGroups(groupname = "Right-Wing", color = ('lightblue')) %>% visGroups(groupname = "Left-Wing", color = ('lightcoral')) %>% visGroups(groupname = "Religious", color = ('lightgreen')) %>% visGroups(groupname = "Ethno-nationalist", color = ('orchid')) %>% visGroups(groupname = "Single Issue", color = ('orange')) %>% visLegend(useGroups = TRUE)
+```
+
+
